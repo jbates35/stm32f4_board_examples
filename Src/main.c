@@ -42,6 +42,7 @@
 
 int main(void) {
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
 
   GPIO_Handle_t gpio_handle;
   GPIO_TypeDef **addr = &gpio_handle.p_GPIO_x;
@@ -56,9 +57,18 @@ int main(void) {
   cfg->GPIO_pin_alt_func_mode = 0;
   GPIO_init(&gpio_handle);
 
+  *addr = USER_PBUTTON_PORT;
+  cfg->GPIO_pin_number = USER_PBUTTON_PIN;
+  cfg->GPIO_pin_mode = GPIO_MODE_IN;
+  cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
+  cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;
+  cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
+  cfg->GPIO_pin_alt_func_mode = 0;
+  GPIO_init(&gpio_handle);
+
   /* Loop forever */
   for (;;) {
-    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
-    WAIT(MEDIUM);
+    uint8_t val = GPIO_read_from_input_pin(USER_PBUTTON_PORT, USER_PBUTTON_PIN);
+    GPIO_write_to_output_pin(LED_GREEN_PORT, LED_GREEN_PIN, val);
   }
 }

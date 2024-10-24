@@ -59,16 +59,22 @@ int main(void) {
 
   *addr = USER_PBUTTON_PORT;
   cfg->GPIO_pin_number = USER_PBUTTON_PIN;
-  cfg->GPIO_pin_mode = GPIO_MODE_IN;
+  cfg->GPIO_pin_mode = GPIO_MODE_IT_FT;
   cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
   cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;
   cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
   cfg->GPIO_pin_alt_func_mode = 0;
   GPIO_init(&gpio_handle);
+  GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
+  // GPIO_irq_priority_config(EXTI15_10_IRQn, USER_PBUTTON_PIN);
 
   /* Loop forever */
   for (;;) {
-    uint8_t val = GPIO_read_from_input_pin(USER_PBUTTON_PORT, USER_PBUTTON_PIN);
-    GPIO_write_to_output_pin(LED_GREEN_PORT, LED_GREEN_PIN, val);
+  }
+}
+
+void EXTI15_10_IRQHandler(void) {
+  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
+    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
   }
 }

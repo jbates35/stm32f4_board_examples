@@ -40,7 +40,11 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
+void timer_setup(void);
+
 int main(void) {
+  // RCC->CR |= RCC_CR_
+
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
 
@@ -68,9 +72,30 @@ int main(void) {
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
   // GPIO_irq_priority_config(EXTI15_10_IRQn, USER_PBUTTON_PIN);
 
+  timer_setup();
+
   /* Loop forever */
   for (;;) {
   }
+}
+
+void timer_setup(void) {
+  // Timer 2 //
+
+  //Enable counter
+  // 1. Select the counter clock (internal, external, prescaler).
+  RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM2EN_Pos);
+
+  // Set timer 2 as upcounter
+  TIM2->CR1 |= TIM_CR1_DIR;
+
+  // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
+  // 3. Set the CCxIE and/or CCxDE bits if an interrupt and/or a DMA request is to be generated.
+  // 4. Select the output mode. For example, one must write OCxM=011, OCxPE=0, CCxP=0 and CCxE=1 to toggle OCx output pin when CNT matches CCRx, CCRx preload is not used, OCx is enabled and active high.
+  // 5. Enable the counter by setting the CEN bit in the TIMx_CR1 register.CR1_CEN;
+
+  // Set the prescaler value
+  TIM2->PSC = 10000;
 }
 
 void EXTI15_10_IRQHandler(void) {

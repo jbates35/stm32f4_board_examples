@@ -90,8 +90,8 @@ void timer_setup(void) {
   TIM2->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
-  TIM2->ARR = 10000;
-  TIM2->CCR1 = (3000 << TIM_CCR2_CCR2_Pos);
+  TIM2->ARR = 10000;                         // Test these by toggling commenting on and off
+  TIM2->CCR1 = (3000 << TIM_CCR2_CCR2_Pos);  // Test these by toggling commenting on and off
 
   // 3. Set the CCxIE and/or CCxDE bits if an interrupt and/or a DMA request is to be generated.
   TIM2->DIER |= (1 << TIM_DIER_CC1IE_Pos);
@@ -106,6 +106,14 @@ void timer_setup(void) {
 
   // Set the prescaler value
   TIM2->PSC = 10000;
+}
+
+void TIM2_IRQHandler(void) {
+  if (TIM2->SR & (1 << TIM_SR_CC1IF_Pos)) {
+    TIM2->SR &= ~(1 << TIM_SR_CC1IF_Pos);
+
+    // Put any logic here for the interrupt
+  }
 }
 
 void EXTI15_10_IRQHandler(void) {

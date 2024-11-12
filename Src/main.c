@@ -80,6 +80,8 @@ int main(void) {
 }
 
 void timer_setup(void) {
+  NVIC->ISER[TIM2_IRQn / 32] |= (1 << (TIM2_IRQn % 32));
+
   // Timer 2 //
 
   //Enable counter
@@ -90,8 +92,11 @@ void timer_setup(void) {
   TIM2->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
-  TIM2->ARR = 10000;                         // Test these by toggling commenting on and off
-  TIM2->CCR1 = (3000 << TIM_CCR2_CCR2_Pos);  // Test these by toggling commenting on and off
+  TIM2->ARR = 1600;                       // Test these by toggling commenting on and off
+  TIM2->CCR1 = (0 << TIM_CCR1_CCR1_Pos);  // Test these by toggling commenting on and off
+                                          //
+  // Set the prescaler value
+  TIM2->PSC = 10000;
 
   // 3. Set the CCxIE and/or CCxDE bits if an interrupt and/or a DMA request is to be generated.
   TIM2->DIER |= (1 << TIM_DIER_CC1IE_Pos);
@@ -99,13 +104,12 @@ void timer_setup(void) {
   // 4. Select the output mode. For example, one must write OCxM=011, OCxPE=0, CCxP=0 and CCxE=1 to toggle OCx output pin when CNT matches CCRx, CCRx preload is not used, OCx is enabled and active high.
   TIM2->CCER |= (1 << TIM_CCER_CC1E_Pos);
   TIM2->CCER &= ~(1 << TIM_CCER_CC1P_Pos);
-  TIM1->CCMR1 = (0b011 << TIM_CCMR1_OC1M_Pos);
+  TIM2->CCMR1 = (0b011 << TIM_CCMR1_OC1M_Pos);
 
   // 5. Enable the counter by setting the CEN bit in the TIMx_CR1 register.CR1_CEN;
   TIM2->CR1 |= (1 << TIM_CR1_CEN_Pos);
 
-  // Set the prescaler value
-  TIM2->PSC = 10000;
+  // NOTE: The timer on the STM32 Nucleo F446 board is set to 16MHz
 }
 
 void TIM2_IRQHandler(void) {
@@ -113,6 +117,7 @@ void TIM2_IRQHandler(void) {
     TIM2->SR &= ~(1 << TIM_SR_CC1IF_Pos);
 
     // Put any logic here for the interrupt
+    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
   }
 }
 

@@ -17,6 +17,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include "stm32f446xx.h"
 #include "stm32f446xx_gpio.h"
@@ -41,6 +42,65 @@
 #endif
 
 void timer_setup(void);
+
+/****** CUSTOM TIMER.h CODE STARTS HERE *******
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ **/
+
+/**
+  * Timer configuration struct
+  * @timer_index: Timer 1, 2, 3, ..., 14
+  * @channel: Timer channel
+  * @timer_mode: Capture or compare mode, or PWM
+  * @interrupt_en: Whether the interrupt is enabled or not
+  * @base_clock_freq_hz: Base clock frequency of the timer (deterministic)
+  * @timer_freq_hz: Desired frequency of the timer (user required)
+  * @prescaler: Pre-scalar to run the timer through
+*/
+
+typedef struct {
+  uint8_t channel;
+  uint8_t timer_mode;
+  uint8_t interrupt_en;
+  uint8_t output_mode;
+  uint32_t base_clock_freq_hz;
+  uint32_t timer_freq_hz;
+  uint16_t prescaler;
+} TimerConfig_t;
+
+typedef struct {
+  TIM_TypeDef *p_base_addr;
+  TimerConfig_t cfg;
+} TimerHandle_t;
+
+enum { TIMER_MODE_COMPARE = 0, TIMER_MODE_CAPTURE = 1, TIMER_MODE_PWM = 2 };
+enum { TIMER_INTERRUPT_DISABLED = 0, TIMER_INTERRUPT_ENABLED = 1 };
+
+void timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
+
+/****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ **/
 
 int main(void) {
   // RCC->CR |= RCC_CR_
@@ -125,4 +185,35 @@ void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
     GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
   }
+}
+
+/****** CUSTOM TIMER.c CODE STARTS HERE *******
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ *
+ **/
+
+#define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
+#define TIMER_SIZE(arr) ((int)sizeof(arr) / sizeof(TIM_TypeDef *))
+
+void timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state) {
+  if (base_addr == NULL) return;
+
+  // Grab the index of the current timer
+  const TIM_TypeDef *timers_arr[] = TIMERS;
+  int i = 0;
+  for (; i < TIMER_SIZE(timers_arr); i++) {
+    if (timers_arr[i] == base_addr) break;
+  }
+
+  // Do nothing if the index is out of range
+  if (i >= TIMER_SIZE(timers_arr)) return;
 }

@@ -86,7 +86,7 @@ typedef struct {
 enum { TIMER_MODE_COMPARE = 0, TIMER_MODE_CAPTURE = 1, TIMER_MODE_PWM = 2 };
 enum { TIMER_INTERRUPT_DISABLED = 0, TIMER_INTERRUPT_ENABLED = 1 };
 
-void timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
+int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -202,18 +202,53 @@ void EXTI15_10_IRQHandler(void) {
  **/
 
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
-#define TIMER_SIZE(arr) ((int)sizeof(arr) / sizeof(TIM_TypeDef *))
+#define TIMERS_RCC_OFFSETS {0x44, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
+#define TIMERS_RCC_POS                                                                                    \
+  {                                                                                                       \
+      RCC_APB2ENR_TIM1EN_Pos,  RCC_APB1ENR_TIM2EN_Pos,  RCC_APB1ENR_TIM3EN_Pos,  RCC_APB1ENR_TIM4EN_Pos,  \
+      RCC_APB1ENR_TIM5EN_Pos,  RCC_APB1ENR_TIM6EN_Pos,  RCC_APB1ENR_TIM7EN_Pos,  RCC_APB2ENR_TIM8EN_Pos,  \
+      RCC_APB2ENR_TIM9EN_Pos,  RCC_APB2ENR_TIM10EN_Pos, RCC_APB2ENR_TIM11EN_Pos, RCC_APB1ENR_TIM12EN_Pos, \
+      RCC_APB1ENR_TIM13EN_Pos, RCC_APB1ENR_TIM14EN_Pos,                                                   \
+  }
 
-void timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state) {
-  if (base_addr == NULL) return;
+#define TIMER_ARR_SIZE(arr) ((int)sizeof(arr) / sizeof(TIM_TypeDef *))
+#define TIMER_POS_ARR_SIZE(arr) ((int)sizeof(arr) / sizeof(uint8_t))
+
+int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state) {
+  if (base_addr == NULL) return -1;
 
   // Grab the index of the current timer
   const TIM_TypeDef *timers_arr[] = TIMERS;
   int i = 0;
-  for (; i < TIMER_SIZE(timers_arr); i++) {
+  for (; i < TIMER_ARR_SIZE(timers_arr); i++) {
     if (timers_arr[i] == base_addr) break;
   }
 
   // Do nothing if the index is out of range
-  if (i >= TIMER_SIZE(timers_arr)) return;
+  if (i >= TIMER_ARR_SIZE(timers_arr)) return -1;
+
+  uint32_t timer_rcc_pos_arr[] = TIMERS_RCC_POS;
+  uint32_t timer_rcc_offsets_arr[] = TIMERS_RCC_OFFSETS;
+
+  // Turn on either a register in APB1 or APB2 according to the timer addr
+  *(volatile uint32_t *)(RCC_BASE + timer_rcc_offsets_arr[i]) |= (1 << timer_rcc_pos_arr[i]);
+
+  return 0;
+}
+
+int timer_init(const TimerHandle_t *timer_handle) {
+  if (timer_handle == NULL) return -1;
+
+  TIM_TypeDef *addr = (timer_handle->p_base_addr);
+  const TimerConfig_t *cfg = &(timer_handle->cfg);
+
+  // Set either timer as input or output depending on mode
+  if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
+  } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
+  }
+
+  if (cfg->interrupt_en == TIMER_INTERRUPT_ENABLED) {
+  }
+
+  return 0;
 }

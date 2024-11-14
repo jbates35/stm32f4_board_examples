@@ -204,7 +204,7 @@ void EXTI15_10_IRQHandler(void) {
  *
  **/
 
-int get_timer_ticks(uint32_t base_clock_freq, uint16_t prescaler, uint32_t timer_freq);
+unsigned int get_timer_ticks(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_freq);
 
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
 #define TIMERS_RCC_OFFSETS {0x44, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
@@ -252,9 +252,11 @@ int timer_init(const TimerHandle_t *timer_handle) {
 
   // Set either timer as input or output depending on mode
   if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
+    // Set as upcounter
     timer->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
-    // Calculate the necessary clock frequency
+    // Calculate the necessary arr value
+
   } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
   }
 
@@ -263,10 +265,6 @@ int timer_init(const TimerHandle_t *timer_handle) {
   }
 
   return 0;
-}
-
-int get_timer_ticks(uint32_t base_clock_freq, uint16_t prescaler, uint32_t timer_freq) {
-  unsigned int true_base_clock = base_clock_freq / prescaler;
 }
 
 void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state) {
@@ -295,4 +293,10 @@ int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel) {
   }
 
   return 0;
+}
+
+/**** HELPER FUNCTIONS *****/
+unsigned int get_timer_ticks(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_freq) {
+  unsigned int true_base_clock = base_clock_freq / prescaler;
+  return true_base_clock / timer_freq;
 }

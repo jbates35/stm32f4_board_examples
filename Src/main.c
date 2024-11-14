@@ -89,6 +89,7 @@ enum { TIMER_INTERRUPT_DISABLED = 0, TIMER_INTERRUPT_ENABLED = 1 };
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 int timer_init(const TimerHandle_t *timer_handle);
+void timer_irq_config(uint8_t irq_number, uint8_t en_state);
 
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -203,6 +204,8 @@ void EXTI15_10_IRQHandler(void) {
  *
  **/
 
+int get_timer_ticks(uint32_t base_clock_freq, uint16_t prescaler, uint32_t timer_freq);
+
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
 #define TIMERS_RCC_OFFSETS {0x44, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
 #define TIMERS_RCC_POS                                                                                    \
@@ -241,15 +244,54 @@ int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_stat
 int timer_init(const TimerHandle_t *timer_handle) {
   if (timer_handle == NULL) return -1;
 
-  TIM_TypeDef *addr = (timer_handle->p_base_addr);
+  TIM_TypeDef *timer = (timer_handle->p_base_addr);
   const TimerConfig_t *cfg = &(timer_handle->cfg);
+
+  // Set the easy ones from the config
+  timer->PSC = cfg->prescaler;
 
   // Set either timer as input or output depending on mode
   if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
+    timer->CR1 |= (1 << TIM_CR1_DIR_Pos);
+
+    // Calculate the necessary clock frequency
   } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
   }
 
+  // Set interrupt if required
   if (cfg->interrupt_en == TIMER_INTERRUPT_ENABLED) {
+  }
+
+  return 0;
+}
+
+int get_timer_ticks(uint32_t base_clock_freq, uint16_t prescaler, uint32_t timer_freq) {
+  unsigned int true_base_clock = base_clock_freq / prescaler;
+}
+
+void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state) {
+  // Enables or disables NVIC
+  // Programs ISER if enable, programs ICER if disable
+  if (en_state)
+    NVIC->ISER[irq_number / 32] |= (1 << (irq_number % 32));
+  else
+    NVIC->ICER[irq_number / 32] |= (1 << (irq_number % 32));
+}
+
+void timer_irq_priority_config(uint8_t irq_number, uint8_t irq_priority) {
+  uint8_t qshift = (irq_number * 8) % 32;  // Will result in bits 0 - 240*8
+  uint8_t qindex = (irq_number * 8) / 32;
+
+  NVIC->IP[qindex] &= ~(0xFF << qshift);
+  NVIC->IP[qindex] |= (irq_priority << qshift << 4) & (0xF0 << qshift);
+}
+
+int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel) {
+  const uint8_t status_regs[] = {TIM_SR_CC1IF_Pos, TIM_SR_CC2IF_Pos, TIM_SR_CC3IF_Pos, TIM_SR_CC4IF_Pos};
+
+  if (timer->SR & (1 << status_regs[channel - 1])) {
+    TIM2->SR &= ~(1 << status_regs[channel - 1]);
+    return 1;
   }
 
   return 0;

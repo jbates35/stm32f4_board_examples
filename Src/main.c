@@ -88,6 +88,8 @@ enum { TIMER_INTERRUPT_DISABLED = 0, TIMER_INTERRUPT_ENABLED = 1 };
 
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
+int timer_init(const TimerHandle_t *timer_handle);
+
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
  *

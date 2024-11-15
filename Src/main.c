@@ -59,25 +59,31 @@ void timer_setup(void);
 
 /**
   * Timer configuration struct
-  * @timer_index: Timer 1, 2, 3, ..., 14
-  * @channel: Timer channel
   * @timer_mode: Capture or compare mode, or PWM
   * @interrupt_en: Whether the interrupt is enabled or not
+  * @gpio_mode: Whether the associated GPIO should be set up to follow the timer
+  * @timer_period_us: Desired period of the channel, in microseconds
   * @base_clock_freq_hz: Base clock frequency of the timer (deterministic)
-  * @timer_freq_hz: Desired frequency of the timer (user required)
   * @prescaler: Pre-scalar to run the timer through
-*/
+  * @channel_count: The number of channels the timer has (TIM1-5, and 8 have 4, others have 2)
+**/
 
 typedef struct {
-  uint8_t channel;
-  uint8_t timer_mode;
-  uint8_t interrupt_en;
-  uint8_t output_mode;
+  uint8_t timer_mode[4];
+  uint8_t interrupt_en[4];
+  uint8_t gpio_mode[4];
+  uint32_t timer_period_us[4];
   uint32_t base_clock_freq_hz;
-  uint32_t timer_freq_hz;
   uint16_t prescaler;
+  uint8_t channel_count;
 } TimerConfig_t;
 
+/**
+  * Timer handler struct
+  * @p_base_addr: Address of the timer (Accessed via TIM1, TIM2, ..., TIM14)
+  * @cfg: Configuration struct for the timer
+  * NOTE: This API only allows for 16-bit values to be compared to in output mode
+**/
 typedef struct {
   TIM_TypeDef *p_base_addr;
   TimerConfig_t cfg;
@@ -204,7 +210,7 @@ void EXTI15_10_IRQHandler(void) {
  *
  **/
 
-unsigned int get_timer_ticks(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_freq);
+unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us);
 
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
 #define TIMERS_RCC_OFFSETS {0x44, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
@@ -232,9 +238,11 @@ int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_stat
   // Do nothing if the index is out of range
   if (i >= TIMER_ARR_SIZE(timers_arr)) return -1;
 
-  uint32_t timer_rcc_pos_arr[] = TIMERS_RCC_POS;
-  uint32_t timer_rcc_offsets_arr[] = TIMERS_RCC_OFFSETS;
+  const uint32_t timer_rcc_pos_arr[] = TIMERS_RCC_POS;
+  const uint32_t timer_rcc_offsets_arr[] = TIMERS_RCC_OFFSETS;
 
+  // NOTE: This line will be wrong
+  // TODO: Fix this
   // Turn on either a register in APB1 or APB2 according to the timer addr
   *(volatile uint32_t *)(RCC_BASE + timer_rcc_offsets_arr[i]) |= (1 << timer_rcc_pos_arr[i]);
 
@@ -249,19 +257,26 @@ int timer_init(const TimerHandle_t *timer_handle) {
 
   // Set the easy ones from the config
   timer->PSC = cfg->prescaler;
+  timer->ARR = 0xffff;
 
-  // Set either timer as input or output depending on mode
-  if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
-    // Set as upcounter
-    timer->CR1 |= (1 << TIM_CR1_DIR_Pos);
+  for (int i = 0; i < cfg->channel_count && i < 4; i++) {
+    // Set either timer as input or output depending on mode
+    if (cfg->timer_mode[i] == TIMER_MODE_COMPARE || cfg->timer_mode[i] == TIMER_MODE_PWM) {
+      // Calculate the necessary arr value
+      const uint32_t timer_width = get_timer_width(cfg->base_clock_freq_hz, cfg->prescaler, cfg->timer_period_us[i]);
+      int32_t ccr_val = 0xffff - timer_width;
+      if (ccr_val < 0) ccr_val = 0;
 
-    // Calculate the necessary arr value
+      // Set the CCR such that ARR-CCR is the tick counts required for the period width
+      volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
+      *ccr_reg[i] = ccr_val;
 
-  } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
-  }
+    } else if (cfg->timer_mode[i] == TIMER_MODE_CAPTURE) {
+    }
 
-  // Set interrupt if required
-  if (cfg->interrupt_en == TIMER_INTERRUPT_ENABLED) {
+    // Set interrupt if required
+    if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLED) {
+    }
   }
 
   return 0;
@@ -296,7 +311,7 @@ int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel) {
 }
 
 /**** HELPER FUNCTIONS *****/
-unsigned int get_timer_ticks(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_freq) {
+unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us) {
   unsigned int true_base_clock = base_clock_freq / prescaler;
-  return true_base_clock / timer_freq;
+  return (unsigned int)timer_period_us / (1000000 * true_base_clock);
 }

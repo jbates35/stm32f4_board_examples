@@ -213,7 +213,9 @@ void EXTI15_10_IRQHandler(void) {
 unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us);
 
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
-#define TIMERS_RCC_OFFSETS {0x44, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x44, 0x44, 0x44, 0x44, 0x40, 0x40, 0x40}
+#define TIMERS_RCC_REGS                                                                                     \
+  {&RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, \
+   &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR}
 #define TIMERS_RCC_POS                                                                                    \
   {                                                                                                       \
       RCC_APB2ENR_TIM1EN_Pos,  RCC_APB1ENR_TIM2EN_Pos,  RCC_APB1ENR_TIM3EN_Pos,  RCC_APB1ENR_TIM4EN_Pos,  \
@@ -238,13 +240,10 @@ int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_stat
   // Do nothing if the index is out of range
   if (i >= TIMER_ARR_SIZE(timers_arr)) return -1;
 
-  const uint32_t timer_rcc_pos_arr[] = TIMERS_RCC_POS;
-  const uint32_t timer_rcc_offsets_arr[] = TIMERS_RCC_OFFSETS;
-
-  // NOTE: This line will be wrong
-  // TODO: Fix this
   // Turn on either a register in APB1 or APB2 according to the timer addr
-  *(volatile uint32_t *)(RCC_BASE + timer_rcc_offsets_arr[i]) |= (1 << timer_rcc_pos_arr[i]);
+  const uint32_t timer_rcc_pos_arr[] = TIMERS_RCC_POS;
+  volatile uint32_t *timer_rcc_reg_arr[] = TIMERS_RCC_REGS;
+  *timer_rcc_reg_arr[i] |= (1 << timer_rcc_pos_arr[i]);
 
   return 0;
 }

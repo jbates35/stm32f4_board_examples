@@ -118,30 +118,34 @@ int main(void) {
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
 
   GPIO_Handle_t gpio_handle;
-  GPIO_TypeDef **addr = &gpio_handle.p_GPIO_x;
-  GPIO_PinConfig_t *cfg = &gpio_handle.GPIO_pin_config;
+  GPIO_TypeDef **gpio_addr = &gpio_handle.p_GPIO_x;
+  GPIO_PinConfig_t *gpio_cfg = &gpio_handle.GPIO_pin_config;
 
-  *addr = LED_GREEN_PORT;
-  cfg->GPIO_pin_number = LED_GREEN_PIN;
-  cfg->GPIO_pin_mode = GPIO_MODE_OUT;
-  cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
-  cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;
-  cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  cfg->GPIO_pin_alt_func_mode = 0;
+  *gpio_addr = LED_GREEN_PORT;
+  gpio_cfg->GPIO_pin_number = LED_GREEN_PIN;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_OUT;
+  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
+  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;
+  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
+  gpio_cfg->GPIO_pin_alt_func_mode = 0;
   GPIO_init(&gpio_handle);
 
-  *addr = USER_PBUTTON_PORT;
-  cfg->GPIO_pin_number = USER_PBUTTON_PIN;
-  cfg->GPIO_pin_mode = GPIO_MODE_IT_FT;
-  cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
-  cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;
-  cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  cfg->GPIO_pin_alt_func_mode = 0;
+  *gpio_addr = USER_PBUTTON_PORT;
+  gpio_cfg->GPIO_pin_number = USER_PBUTTON_PIN;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_IT_FT;
+  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
+  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;
+  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
+  gpio_cfg->GPIO_pin_alt_func_mode = 0;
   GPIO_init(&gpio_handle);
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
   // GPIO_irq_priority_config(EXTI15_10_IRQn, USER_PBUTTON_PIN);
 
-  timer_setup();
+  //timer_setup();
+
+  TimerHandle_t timer_handle;
+  TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
+  TimerConfig_t *timer_cfg = &timer_handle.cfg;
 
   /* Loop forever */
   for (;;) {

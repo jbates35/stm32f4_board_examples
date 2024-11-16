@@ -65,7 +65,7 @@ void timer_setup(void);
   * @timer_period_us: Desired period of the channel, in microseconds
   * @base_clock_freq_hz: Base clock frequency of the timer (deterministic)
   * @prescaler: Pre-scalar to run the timer through
-  * @channel_count: The number of channels the timer has (TIM1-5, and 8 have 4, others have 2)
+  * @channel_count: The number of channels to init (TIM1-5, and 8 have 4 timers, others have 2 timers)
 **/
 
 typedef struct {

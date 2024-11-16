@@ -251,8 +251,13 @@ int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_stat
 int timer_init(const TimerHandle_t *timer_handle) {
   if (timer_handle == NULL) return -1;
 
+  //// Helper stuff for the function
+  // Break the addr and config into separate variables for nicer looking code
   TIM_TypeDef *timer = (timer_handle->p_base_addr);
   const TimerConfig_t *cfg = &(timer_handle->cfg);
+
+  // For easier indexing of addresses
+  volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
 
   // Set the easy ones from the config
   timer->PSC = cfg->prescaler;
@@ -267,7 +272,6 @@ int timer_init(const TimerHandle_t *timer_handle) {
       if (ccr_val < 0) ccr_val = 0;
 
       // Set the CCR such that ARR-CCR is the tick counts required for the period width
-      volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
       *ccr_reg[i] = ccr_val;
 
     } else if (cfg->timer_mode[i] == TIMER_MODE_CAPTURE) {
@@ -275,7 +279,10 @@ int timer_init(const TimerHandle_t *timer_handle) {
 
     // Set interrupt if required
     if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLED) {
+      TIM2->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
     }
+
+    // Take care of GPIO mode
   }
 
   return 0;

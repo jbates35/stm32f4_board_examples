@@ -90,12 +90,16 @@ typedef struct {
 } TimerHandle_t;
 
 enum { TIMER_MODE_COMPARE = 0, TIMER_MODE_CAPTURE = 1, TIMER_MODE_PWM = 2 };
-enum { TIMER_INTERRUPT_DISABLED = 0, TIMER_INTERRUPT_ENABLED = 1 };
+enum { TIMER_INTERRUPT_DISABLE = 0, TIMER_INTERRUPT_ENABLE = 1 };
+enum { TIMER_IRQ_DISABLE = 0, TIMER_IRQ_ENABLE = 1 };
+enum { TIMER_PERI_CLOCK_DISABLE = 0, TIMER_PERI_CLOCK_ENABLE = 1 };
 
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 int timer_init(const TimerHandle_t *timer_handle);
-void timer_irq_config(uint8_t irq_number, uint8_t en_state);
+void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state);
+void timer_irq_priority_config(uint8_t irq_number, uint8_t irq_priority);
+int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel);
 
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -141,11 +145,30 @@ int main(void) {
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
   // GPIO_irq_priority_config(EXTI15_10_IRQn, USER_PBUTTON_PIN);
 
-  //timer_setup();
+  timer_setup();
 
   TimerHandle_t timer_handle;
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
+
+  // Timer 2 configuration
+  // timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
+  *timer_addr = TIM2;
+  // overall timer specific
+  timer_cfg->prescaler = 10000;
+  timer_cfg->base_clock_freq_hz = 16000000;
+  timer_cfg->channel_count = 1;
+
+  // channel specific
+  timer_cfg->timer_mode[0] = TIMER_MODE_COMPARE;
+  timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_ENABLE;
+  timer_cfg->timer_period_us[0] = 500000;
+
+  // Initialize timer, enable the associated ISR
+  // timer_init(&timer_handle);
+  // timer_irq_interrupt_config(TIM2_IRQn, TIMER_IRQ_ENABLE);
+
+  int test_debug_line = 1234;
 
   /* Loop forever */
   for (;;) {
@@ -165,9 +188,9 @@ void timer_setup(void) {
   TIM2->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
-  TIM2->ARR = 1600;                       // Test these by toggling commenting on and off
-  TIM2->CCR1 = (0 << TIM_CCR1_CCR1_Pos);  // Test these by toggling commenting on and off
-                                          //
+  TIM2->ARR = 0xFFFF;         // Test these by toggling commenting on and off
+  TIM2->CCR1 = 0xFFFF - 800;  // Test these by toggling commenting on and off
+                              //
   // Set the prescaler value
   TIM2->PSC = 10000;
 
@@ -186,10 +209,7 @@ void timer_setup(void) {
 }
 
 void TIM2_IRQHandler(void) {
-  if (TIM2->SR & (1 << TIM_SR_CC1IF_Pos)) {
-    TIM2->SR &= ~(1 << TIM_SR_CC1IF_Pos);
-
-    // Put any logic here for the interrupt
+  if (timer_irq_handling(TIM2, 1)) {
     GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
   }
 }
@@ -282,12 +302,15 @@ int timer_init(const TimerHandle_t *timer_handle) {
     }
 
     // Set interrupt if required
-    if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLED) {
-      TIM2->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
+    if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLE) {
+      timer->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
     }
 
     // Take care of GPIO mode
   }
+
+  // Lastly, enable the timer
+  timer->CR1 |= (1 << TIM_CR1_CEN_Pos);
 
   return 0;
 }
@@ -295,7 +318,7 @@ int timer_init(const TimerHandle_t *timer_handle) {
 void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state) {
   // Enables or disables NVIC
   // Programs ISER if enable, programs ICER if disable
-  if (en_state)
+  if (en_state == TIMER_IRQ_ENABLE)
     NVIC->ISER[irq_number / 32] |= (1 << (irq_number % 32));
   else
     NVIC->ICER[irq_number / 32] |= (1 << (irq_number % 32));
@@ -322,6 +345,6 @@ int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel) {
 
 /**** HELPER FUNCTIONS *****/
 unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us) {
-  unsigned int true_base_clock = base_clock_freq / prescaler;
-  return (unsigned int)timer_period_us / (1000000 * true_base_clock);
+  unsigned int true_timer_clock_freq = base_clock_freq / prescaler;
+  return (unsigned int)timer_period_us * true_timer_clock_freq / 1000000;
 }

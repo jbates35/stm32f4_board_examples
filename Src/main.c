@@ -41,7 +41,7 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-void timer_setup(void);
+void timer_setup_test(void);
 
 /****** CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -59,21 +59,23 @@ void timer_setup(void);
 
 /**
   * Timer configuration struct
-  * @gpio_mode: Whether the associated GPIO should be set up to follow the timer
+  * @gpio_en: Whether the associated GPIO should be set up to follow the timer. Necessary for PWM and Input capture
   * @interrupt_en: Whether the interrupt is enabled or not
   * @ccr_vals: The ccr vals to be set, which dictate when the interrupts happen
   * @timer_mode: Capture or compare mode, or PWM
   * @arr_val: The auto reset reload register for the timer
   * @prescaler: Pre-scalar to run the timer through (actual_freq = base_freq/(psc+1))
   * @channel_count: The number of channels to init (TIM1-5, and 8 have 4 timers, others have 2 timers)
+  *
+  * NOTE: If using with nucleo f446 board, the base clock will be 16MHz
 **/
 
 typedef struct {
-  uint8_t gpio_mode[4];
+  uint8_t gpio_en[4];
   uint8_t interrupt_en[4];
-  uint32_t ccr_vals[4];
+  uint16_t ccr[4];
   uint8_t timer_mode;
-  uint16_t arr_val;
+  uint16_t arr;
   uint16_t prescaler;
   uint8_t channel_count;
 } TimerConfig_t;
@@ -93,13 +95,14 @@ enum { TIMER_MODE_COMPARE = 0, TIMER_MODE_CAPTURE = 1, TIMER_MODE_PWM = 2 };
 enum { TIMER_INTERRUPT_DISABLE = 0, TIMER_INTERRUPT_ENABLE = 1 };
 enum { TIMER_IRQ_DISABLE = 0, TIMER_IRQ_ENABLE = 1 };
 enum { TIMER_PERI_CLOCK_DISABLE = 0, TIMER_PERI_CLOCK_ENABLE = 1 };
+enum { TIMER_CHANNEL_1 = 0, TIMER_CHANNEL_2 = 1, TIMER_CHANNEL_3 = 2, TIMER_CHANNEL_4 = 3 };
 
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 int timer_init(const TimerHandle_t *timer_handle);
-void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state);
-void timer_irq_priority_config(uint8_t irq_number, uint8_t irq_priority);
-int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel);
+void timer_irq_interrupt_config(const uint8_t irq_number, const uint8_t en_state);
+void timer_irq_priority_config(const uint8_t irq_number, const uint8_t irq_priority);
+int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel);
 
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -145,28 +148,31 @@ int main(void) {
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
   // GPIO_irq_priority_config(EXTI15_10_IRQn, USER_PBUTTON_PIN);
 
-  timer_setup();
+  // timer_setup();
 
   TimerHandle_t timer_handle;
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
 
   // Timer 2 configuration
-  // timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
+  timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
   *timer_addr = TIM2;
+
   // overall timer specific
-  timer_cfg->prescaler = 10000;
-  timer_cfg->base_clock_freq_hz = 16000000;
-  timer_cfg->channel_count = 1;
+  timer_cfg->prescaler = 253;  // 16M / (PSC + 1) = ~65536
+  timer_cfg->arr = 65535;
+  timer_cfg->channel_count = 2;
+  timer_cfg->timer_mode = TIMER_MODE_COMPARE;
 
   // channel specific
-  timer_cfg->timer_mode[0] = TIMER_MODE_COMPARE;
   timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->timer_period_us[0] = 500000;
+  timer_cfg->interrupt_en[1] = TIMER_INTERRUPT_ENABLE;
+  timer_cfg->ccr[0] = 0;
+  timer_cfg->ccr[1] = 45000;
 
   // Initialize timer, enable the associated ISR
-  // timer_init(&timer_handle);
-  // timer_irq_interrupt_config(TIM2_IRQn, TIMER_IRQ_ENABLE);
+  timer_init(&timer_handle);
+  timer_irq_interrupt_config(TIM2_IRQn, TIMER_IRQ_ENABLE);
 
   int test_debug_line = 1234;
 
@@ -175,7 +181,7 @@ int main(void) {
   }
 }
 
-void timer_setup(void) {
+void timer_setup_test(void) {
   NVIC->ISER[TIM2_IRQn / 32] |= (1 << (TIM2_IRQn % 32));
 
   // Timer 2 //
@@ -216,18 +222,18 @@ void TIM2_IRQHandler(void) {
   static int tim1 = 0, tim2 = 0;
 
   if (timer_irq_handling(TIM2, 1)) {
-    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
+    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
     tim1 = TIM2->CNT;
   }
   if (timer_irq_handling(TIM2, 2)) {
-    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
+    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
     tim2 = TIM2->CNT;
   }
 }
 
 void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
+    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
   }
 }
 
@@ -244,8 +250,6 @@ void EXTI15_10_IRQHandler(void) {
  *
  *
  **/
-
-unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us);
 
 #define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
 #define TIMERS_RCC_REGS                                                                                     \
@@ -286,38 +290,31 @@ int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_stat
 int timer_init(const TimerHandle_t *timer_handle) {
   if (timer_handle == NULL) return -1;
 
-  //// Helper stuff for the function
   // Break the addr and config into separate variables for nicer looking code
   TIM_TypeDef *timer = (timer_handle->p_base_addr);
   const TimerConfig_t *cfg = &(timer_handle->cfg);
 
+  // Set the frequency of the timer
+  timer->PSC = cfg->prescaler;
+  timer->ARR = cfg->arr;
+
+  // Take care of GPIO mode
+  if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
+  } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
+  }
+
   // For easier indexing of addresses
   volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
 
-  // Set the easy ones from the config
-  timer->PSC = cfg->prescaler;
-  timer->ARR = 0xffff;
-
-  for (int i = 0; i < cfg->channel_count && i < 4; i++) {
-    // Set either timer as input or output depending on mode
-    if (cfg->timer_mode[i] == TIMER_MODE_COMPARE || cfg->timer_mode[i] == TIMER_MODE_PWM) {
-      // Calculate the necessary arr value
-      const uint32_t timer_width = get_timer_width(cfg->base_clock_freq_hz, cfg->prescaler, cfg->timer_period_us[i]);
-      int32_t ccr_val = 0xffff - timer_width;
-      if (ccr_val < 0) ccr_val = 0;
-
-      // Set the CCR such that ARR-CCR is the tick counts required for the period width
-      *ccr_reg[i] = ccr_val;
-
-    } else if (cfg->timer_mode[i] == TIMER_MODE_CAPTURE) {
-    }
+  // Configure channel specific attributes
+  for (int i = 0; i < cfg->channel_count && i < sizeof(ccr_reg) / sizeof(ccr_reg[0]); i++) {
+    // Load the times when interrupts happen
+    *ccr_reg[i] = cfg->ccr[i];
 
     // Set interrupt if required
     if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLE) {
       timer->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
     }
-
-    // Take care of GPIO mode
   }
 
   // Lastly, enable the timer
@@ -326,7 +323,7 @@ int timer_init(const TimerHandle_t *timer_handle) {
   return 0;
 }
 
-void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state) {
+void timer_irq_interrupt_config(const uint8_t irq_number, const uint8_t en_state) {
   // Enables or disables NVIC
   // Programs ISER if enable, programs ICER if disable
   if (en_state == TIMER_IRQ_ENABLE)
@@ -335,7 +332,7 @@ void timer_irq_interrupt_config(uint8_t irq_number, uint8_t en_state) {
     NVIC->ICER[irq_number / 32] |= (1 << (irq_number % 32));
 }
 
-void timer_irq_priority_config(uint8_t irq_number, uint8_t irq_priority) {
+void timer_irq_priority_config(const uint8_t irq_number, const uint8_t irq_priority) {
   uint8_t qshift = (irq_number * 8) % 32;  // Will result in bits 0 - 240*8
   uint8_t qindex = (irq_number * 8) / 32;
 
@@ -343,19 +340,15 @@ void timer_irq_priority_config(uint8_t irq_number, uint8_t irq_priority) {
   NVIC->IP[qindex] |= (irq_priority << qshift << 4) & (0xF0 << qshift);
 }
 
-int timer_irq_handling(TIM_TypeDef *timer, uint8_t channel) {
+int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel) {
+  if (timer == NULL) return 0;
+
   const uint8_t status_regs[] = {TIM_SR_CC1IF_Pos, TIM_SR_CC2IF_Pos, TIM_SR_CC3IF_Pos, TIM_SR_CC4IF_Pos};
 
-  if (timer->SR & (1 << status_regs[channel - 1])) {
-    TIM2->SR &= ~(1 << status_regs[channel - 1]);
+  if (timer->SR & (1 << status_regs[channel])) {
+    timer->SR &= ~(1 << status_regs[channel]);
     return 1;
   }
 
   return 0;
-}
-
-/**** HELPER FUNCTIONS *****/
-unsigned int get_timer_width(const uint32_t base_clock_freq, const uint16_t prescaler, const uint32_t timer_period_us) {
-  unsigned int true_timer_clock_freq = base_clock_freq / prescaler;
-  return (unsigned int)timer_period_us * true_timer_clock_freq / 1000000;
 }

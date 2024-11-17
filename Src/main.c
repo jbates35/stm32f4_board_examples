@@ -59,21 +59,21 @@ void timer_setup(void);
 
 /**
   * Timer configuration struct
-  * @timer_mode: Capture or compare mode, or PWM
-  * @interrupt_en: Whether the interrupt is enabled or not
   * @gpio_mode: Whether the associated GPIO should be set up to follow the timer
-  * @timer_period_us: Desired period of the channel, in microseconds
-  * @base_clock_freq_hz: Base clock frequency of the timer (deterministic)
-  * @prescaler: Pre-scalar to run the timer through
+  * @interrupt_en: Whether the interrupt is enabled or not
+  * @ccr_vals: The ccr vals to be set, which dictate when the interrupts happen
+  * @timer_mode: Capture or compare mode, or PWM
+  * @arr_val: The auto reset reload register for the timer
+  * @prescaler: Pre-scalar to run the timer through (actual_freq = base_freq/(psc+1))
   * @channel_count: The number of channels to init (TIM1-5, and 8 have 4 timers, others have 2 timers)
 **/
 
 typedef struct {
-  uint8_t timer_mode[4];
-  uint8_t interrupt_en[4];
   uint8_t gpio_mode[4];
-  uint32_t timer_period_us[4];
-  uint32_t base_clock_freq_hz;
+  uint8_t interrupt_en[4];
+  uint32_t ccr_vals[4];
+  uint8_t timer_mode;
+  uint16_t arr_val;
   uint16_t prescaler;
   uint8_t channel_count;
 } TimerConfig_t;

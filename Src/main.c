@@ -188,19 +188,23 @@ void timer_setup(void) {
   TIM2->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
-  TIM2->ARR = 0xFFFF;         // Test these by toggling commenting on and off
-  TIM2->CCR1 = 0xFFFF - 800;  // Test these by toggling commenting on and off
-                              //
+  /* TIM2->ARR = 0xFFFF;         // Test these by toggling commenting on and off
+  TIM2->CCR1 = 0xFFFF - 800;  // Test these by toggling commenting on and off */
+  TIM2->CCR1 = 0;
+  TIM2->CCR2 = 0x6000;
+  TIM2->ARR = 0xFFFF;
+  //
   // Set the prescaler value
-  TIM2->PSC = 10000;
+  TIM2->PSC = 243;
 
   // 3. Set the CCxIE and/or CCxDE bits if an interrupt and/or a DMA request is to be generated.
   TIM2->DIER |= (1 << TIM_DIER_CC1IE_Pos);
+  TIM2->DIER |= (1 << TIM_DIER_CC2IE_Pos);
 
   // 4. Select the output mode. For example, one must write OCxM=011, OCxPE=0, CCxP=0 and CCxE=1 to toggle OCx output pin when CNT matches CCRx, CCRx preload is not used, OCx is enabled and active high.
-  TIM2->CCER |= (1 << TIM_CCER_CC1E_Pos);
-  TIM2->CCER &= ~(1 << TIM_CCER_CC1P_Pos);
-  TIM2->CCMR1 = (0b011 << TIM_CCMR1_OC1M_Pos);
+  // TIM2->CCER |= (1 << TIM_CCER_CC1E_Pos);
+  // TIM2->CCER &= ~(1 << TIM_CCER_CC1P_Pos);
+  TIM2->CCMR1 = (0b001 << TIM_CCMR1_OC1M_Pos);
 
   // 5. Enable the counter by setting the CEN bit in the TIMx_CR1 register.CR1_CEN;
   TIM2->CR1 |= (1 << TIM_CR1_CEN_Pos);
@@ -209,8 +213,15 @@ void timer_setup(void) {
 }
 
 void TIM2_IRQHandler(void) {
+  static int tim1 = 0, tim2 = 0;
+
   if (timer_irq_handling(TIM2, 1)) {
     GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
+    tim1 = TIM2->CNT;
+  }
+  if (timer_irq_handling(TIM2, 2)) {
+    GPIO_toggle_output_pin(LED_GREEN_PORT, LED_GREEN_PIN);
+    tim2 = TIM2->CNT;
   }
 }
 

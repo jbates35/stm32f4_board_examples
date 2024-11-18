@@ -108,7 +108,7 @@ enum { TIMER_DIR_UP = 0, TIMER_DIR_DOWN = 1 };
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 int timer_init(const TimerHandle_t *timer_handle);
-int timer_set_pwm(const TIM_TypeDef *timer, const uint8_t channel, const uint16_t val);
+int timer_set_pwm(TIM_TypeDef *timer, const uint8_t channel, const uint16_t val);
 void timer_irq_interrupt_config(const uint8_t irq_number, const uint8_t en_state);
 void timer_irq_priority_config(const uint8_t irq_number, const uint8_t irq_priority);
 int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel);
@@ -276,6 +276,9 @@ void EXTI15_10_IRQHandler(void) {
 #define TIMER_ARR_SIZE(arr) ((int)sizeof(arr) / sizeof(TIM_TypeDef *))
 #define TIMER_POS_ARR_SIZE(arr) ((int)sizeof(arr) / sizeof(uint8_t))
 
+#define TIMERS_CCR_REGS(timer) {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4}
+#define TIMERS_CCMR_REGS(timer) {&timer->CCMR1, &timer->CCMR1, &timer->CCMR2, &timer->CCMR2}
+
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state) {
   if (base_addr == NULL) return -1;
 
@@ -315,8 +318,8 @@ int timer_init(const TimerHandle_t *timer_handle) {
     timer->CR1 |= (1 << TIM_CR1_DIR);
 
   // For easier indexing of addresses
-  volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
-  volatile uint32_t *ccmr_reg[] = {&timer->CCMR1, &timer->CCMR1, &timer->CCMR2, &timer->CCMR2};
+  volatile uint32_t *ccr_reg[] = TIMERS_CCR_REGS(timer);
+  volatile uint32_t *ccmr_reg[] = TIMERS_CCMR_REGS(timer);
 
   // Configure channel specific attributes
   for (int i = 0; i < cfg->channel_count && i < sizeof(ccr_reg) / sizeof(ccr_reg[0]); i++) {
@@ -349,6 +352,13 @@ int timer_init(const TimerHandle_t *timer_handle) {
   // Lastly, enable the timer
   timer->CR1 |= (1 << TIM_CR1_CEN_Pos);
 
+  return 0;
+}
+
+int timer_set_pwm(TIM_TypeDef *timer, const uint8_t channel, const uint16_t val) {
+  if (timer == NULL) return -1;
+  volatile uint32_t *ccr_reg[] = TIMERS_CCR_REGS(timer);
+  *ccr_reg[(int)channel] = val;
   return 0;
 }
 

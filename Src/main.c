@@ -73,11 +73,12 @@ void timer_setup_test(void);
 typedef struct {
   uint8_t gpio_en[4];
   uint8_t interrupt_en[4];
+  uint8_t channel_mode[4];
   uint16_t ccr[4];
-  uint8_t timer_mode;
   uint16_t arr;
   uint16_t prescaler;
   uint8_t channel_count;
+  uint8_t dir;
 } TimerConfig_t;
 
 /**
@@ -91,15 +92,23 @@ typedef struct {
   TimerConfig_t cfg;
 } TimerHandle_t;
 
-enum { TIMER_MODE_COMPARE = 0, TIMER_MODE_CAPTURE = 1, TIMER_MODE_PWM = 2 };
+enum {
+  TIMER_CHANNEL_MODE_COMPARE = 0,
+  TIMER_CHANNEL_MODE_CAPTURE = 1,
+  TIMER_CHANNEL_MODE_PWM_HI = 2,
+  TIMER_CHANNEL_MODE_PWM_LO = 3
+};
 enum { TIMER_INTERRUPT_DISABLE = 0, TIMER_INTERRUPT_ENABLE = 1 };
 enum { TIMER_IRQ_DISABLE = 0, TIMER_IRQ_ENABLE = 1 };
 enum { TIMER_PERI_CLOCK_DISABLE = 0, TIMER_PERI_CLOCK_ENABLE = 1 };
 enum { TIMER_CHANNEL_1 = 0, TIMER_CHANNEL_2 = 1, TIMER_CHANNEL_3 = 2, TIMER_CHANNEL_4 = 3 };
+enum { TIMER_GPIO_DISABLE = 0, TIMER_GPIO_ENABLE = 1 };
+enum { TIMER_DIR_UP = 0, TIMER_DIR_DOWN = 1 };
 
 int timer_peri_clock_control(const TIM_TypeDef *base_addr, const uint8_t en_state);
 
 int timer_init(const TimerHandle_t *timer_handle);
+int timer_set_pwm(const TIM_TypeDef *timer, const uint8_t channel, const uint16_t val);
 void timer_irq_interrupt_config(const uint8_t irq_number, const uint8_t en_state);
 void timer_irq_priority_config(const uint8_t irq_number, const uint8_t irq_priority);
 int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel);
@@ -162,13 +171,14 @@ int main(void) {
   timer_cfg->prescaler = 253;  // 16M / (PSC + 1) = ~65536
   timer_cfg->arr = 65535;
   timer_cfg->channel_count = 2;
-  timer_cfg->timer_mode = TIMER_MODE_COMPARE;
 
   // channel specific
   timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_ENABLE;
   timer_cfg->interrupt_en[1] = TIMER_INTERRUPT_ENABLE;
   timer_cfg->ccr[0] = 0;
   timer_cfg->ccr[1] = 45000;
+  timer_cfg->channel_mode[0] = TIMER_CHANNEL_MODE_COMPARE;
+  timer_cfg->channel_mode[1] = TIMER_CHANNEL_MODE_COMPARE;
 
   // Initialize timer, enable the associated ISR
   timer_init(&timer_handle);
@@ -298,23 +308,42 @@ int timer_init(const TimerHandle_t *timer_handle) {
   timer->PSC = cfg->prescaler;
   timer->ARR = cfg->arr;
 
-  // Take care of GPIO mode
-  if (cfg->timer_mode == TIMER_MODE_COMPARE || cfg->timer_mode == TIMER_MODE_PWM) {
-  } else if (cfg->timer_mode == TIMER_MODE_CAPTURE) {
-  }
+  // Set direction of the timer
+  if (cfg->dir == TIMER_DIR_UP)
+    timer->CR1 &= ~(1 << TIM_CR1_DIR);
+  else if (cfg->dir == TIMER_DIR_DOWN)
+    timer->CR1 |= (1 << TIM_CR1_DIR);
 
   // For easier indexing of addresses
   volatile uint32_t *ccr_reg[] = {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4};
+  volatile uint32_t *ccmr_reg[] = {&timer->CCMR1, &timer->CCMR1, &timer->CCMR2, &timer->CCMR2};
 
   // Configure channel specific attributes
   for (int i = 0; i < cfg->channel_count && i < sizeof(ccr_reg) / sizeof(ccr_reg[0]); i++) {
+    // Reset the bits for output mode so it can be set by the following
+    *ccmr_reg[i] &= ~(0b111 << (TIM_CCMR1_OC1M_Pos + (i * 8) % 16));
+
+    // Configure the output mode accordingly
+    if (cfg->channel_mode[i] == TIMER_CHANNEL_MODE_COMPARE) {
+    } else if (cfg->channel_mode[i] == TIMER_CHANNEL_MODE_CAPTURE) {
+    } else if (cfg->channel_mode[i] == TIMER_CHANNEL_MODE_PWM_HI) {
+      *ccmr_reg[i] |= (0b110 << (TIM_CCMR1_OC1M_Pos + (i * 8) % 16));
+    } else if (cfg->channel_mode[i] == TIMER_CHANNEL_MODE_PWM_LO) {
+      *ccmr_reg[i] |= (0b111 << (TIM_CCMR1_OC1M_Pos + (i * 8) % 16));
+    }
+
+    // Enable or disable the forwarding of the pin information to the GPIO pin
+    if (cfg->gpio_en[i] == TIMER_GPIO_ENABLE)
+      timer->CCER |= (1 << (TIM_CCER_CC1E + (4 * i)));
+    else
+      timer->CCER &= ~(1 << (TIM_CCER_CC1E + (4 * i)));
+
     // Load the times when interrupts happen
     *ccr_reg[i] = cfg->ccr[i];
 
     // Set interrupt if required
-    if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLE) {
-      timer->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
-    }
+    timer->DIER &= ~(1 << (TIM_DIER_CC1IE_Pos + i));
+    if (cfg->interrupt_en[i] == TIMER_INTERRUPT_ENABLE) timer->DIER |= (1 << (TIM_DIER_CC1IE_Pos + i));
   }
 
   // Lastly, enable the timer

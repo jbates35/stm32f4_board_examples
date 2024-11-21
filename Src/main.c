@@ -33,9 +33,17 @@
 /******* PINS *********/
 #define LED_GREEN_PORT GPIOA
 #define LED_GREEN_PIN 5
+#define LED_GREEN_ALT_FN 1
 
 #define USER_PBUTTON_PORT GPIOC
 #define USER_PBUTTON_PIN 13
+
+/******* TIMERS ********/
+#define TIM_TIMER_ADDR TIM5
+#define TIM_CHANNEL 1
+
+#define PWM_TIMER_ADDR TIM2
+#define PWM_CHANNEL 1
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -139,11 +147,11 @@ int main(void) {
 
   *gpio_addr = LED_GREEN_PORT;
   gpio_cfg->GPIO_pin_number = LED_GREEN_PIN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_OUT;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
   gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
   gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;
   gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = 0;
+  gpio_cfg->GPIO_pin_alt_func_mode = LED_GREEN_ALT_FN;
   GPIO_init(&gpio_handle);
 
   *gpio_addr = USER_PBUTTON_PORT;
@@ -163,28 +171,40 @@ int main(void) {
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
 
-  // Timer 2 configuration
-  timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
-  *timer_addr = TIM2;
+  // Timer 5 configuration
+  timer_peri_clock_control(TIM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
+  *timer_addr = TIM_TIMER_ADDR;
 
   // overall timer specific
   timer_cfg->prescaler = 253;  // 16M / (PSC + 1) = ~65536
   timer_cfg->arr = 65535;
-  timer_cfg->channel_count = 2;
+  timer_cfg->channel_count = 1;
 
   // channel specific
   timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->interrupt_en[1] = TIMER_INTERRUPT_ENABLE;
   timer_cfg->ccr[0] = 0;
-  timer_cfg->ccr[1] = 45000;
   timer_cfg->channel_mode[0] = TIMER_CHANNEL_MODE_COMPARE;
-  timer_cfg->channel_mode[1] = TIMER_CHANNEL_MODE_COMPARE;
 
   // Initialize timer, enable the associated ISR
   timer_init(&timer_handle);
-  timer_irq_interrupt_config(TIM2_IRQn, TIMER_IRQ_ENABLE);
+  timer_irq_interrupt_config(TIM5_IRQn, TIMER_IRQ_ENABLE);
 
-  int test_debug_line = 1234;
+  // Timer 2 configuration
+  timer_peri_clock_control(PWM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
+  *timer_addr = PWM_TIMER_ADDR;
+
+  // overall timer specific
+  timer_cfg->prescaler = 253;  // 16M / (PSC + 1) = ~65536
+  timer_cfg->arr = 65535;
+  timer_cfg->channel_count = 1;
+
+  // channel specific
+  timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_DISABLE;
+  timer_cfg->ccr[0] = 0;
+  timer_cfg->channel_mode[0] = TIMER_CHANNEL_MODE_PWM_HI;
+
+  // Initialize timer, enable the associated ISR
+  timer_init(&timer_handle);
 
   /* Loop forever */
   for (;;) {
@@ -228,16 +248,15 @@ void timer_setup_test(void) {
   // NOTE: The timer on the STM32 Nucleo F446 board is set to 16MHz
 }
 
-void TIM2_IRQHandler(void) {
-  static int tim1 = 0, tim2 = 0;
+void TIM5_IRQHandler(void) {
+  static float pwm_alpha = 1;
+  pwm_alpha += 0.25;
+  if (pwm_alpha > 1) pwm_alpha = 0;
 
-  if (timer_irq_handling(TIM2, 1)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
-    tim1 = TIM2->CNT;
-  }
-  if (timer_irq_handling(TIM2, 2)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
-    tim2 = TIM2->CNT;
+  uint16_t pwm_val = pwm_alpha * PWM_TIMER_ADDR->ARR;
+
+  if (timer_irq_handling(TIM_TIMER_ADDR, TIMER_CHANNEL_1)) {
+    timer_set_pwm(PWM_TIMER_ADDR, TIMER_CHANNEL_1, pwm_val);
   }
 }
 

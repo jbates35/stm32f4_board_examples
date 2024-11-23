@@ -133,9 +133,9 @@ int main(void) {
   timer_cfg->channel_count = 1;
 
   // channel specific
-  timer_cfg->interrupt_en[0] = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->ccr[0] = 0;
-  timer_cfg->channel_mode[0] = TIMER_CHANNEL_MODE_COMPARE;
+  timer_cfg->channel_1.interrupt_en = TIMER_INTERRUPT_ENABLE;
+  timer_cfg->channel_1.ccr = 0;
+  timer_cfg->channel_1.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
 
   // Initialize timer, enable the associated ISR
   timer_init(&timer_handle);
@@ -151,10 +151,10 @@ int main(void) {
   timer_cfg->channel_count = 4;
 
   // channel specific
-  timer_cfg->interrupt_en[3] = TIMER_INTERRUPT_DISABLE;
-  timer_cfg->ccr[3] = 0;
-  timer_cfg->channel_mode[3] = TIMER_CHANNEL_MODE_PWM_HI;
-  timer_cfg->gpio_en[3] = TIMER_GPIO_ENABLE;
+  timer_cfg->channel_4.interrupt_en = TIMER_INTERRUPT_DISABLE;
+  timer_cfg->channel_4.ccr = 0;
+  timer_cfg->channel_4.channel_mode = TIMER_CHANNEL_MODE_PWM_HI;
+  timer_cfg->channel_4.gpio_en = TIMER_GPIO_ENABLE;
 
   timer_init(&timer_handle);
 

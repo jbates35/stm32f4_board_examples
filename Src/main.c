@@ -74,6 +74,25 @@ void timer_setup_test(void);
  *
  *
  **/
+#define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
+#define TIMERS_RCC_REGS                                                                                     \
+  {&RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, \
+   &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR}
+#define TIMERS_RCC_POS                                                                                    \
+  {                                                                                                       \
+      RCC_APB2ENR_TIM1EN_Pos,  RCC_APB1ENR_TIM2EN_Pos,  RCC_APB1ENR_TIM3EN_Pos,  RCC_APB1ENR_TIM4EN_Pos,  \
+      RCC_APB1ENR_TIM5EN_Pos,  RCC_APB1ENR_TIM6EN_Pos,  RCC_APB1ENR_TIM7EN_Pos,  RCC_APB2ENR_TIM8EN_Pos,  \
+      RCC_APB2ENR_TIM9EN_Pos,  RCC_APB2ENR_TIM10EN_Pos, RCC_APB2ENR_TIM11EN_Pos, RCC_APB1ENR_TIM12EN_Pos, \
+      RCC_APB1ENR_TIM13EN_Pos, RCC_APB1ENR_TIM14EN_Pos,                                                   \
+  }
+
+#define TIMER_CCR_REGS(timer) {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4}
+#define TIMER_CCMR_REGS(timer) {&timer->CCMR1, &timer->CCMR1, &timer->CCMR2, &timer->CCMR2}
+
+#define SIZEOF(arr) ((int)sizeof(arr) / sizeof(arr[0]))
+#define SIZEOFP(arr) ((int)sizeof(arr) / sizeof(uint32_t))  // Memory size of stm32f4
+
+#define CHANNEL_CONFIGS(cfg) {&cfg->channel_1, &cfg->channel_2, &cfg->channel_3, &cfg->channel_4}
 
 /****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
  *
@@ -151,6 +170,8 @@ int main(void) {
   timer_cfg->arr = 0xFFFF;
   timer_cfg->channel_count = 3;
 
+  timer_cfg->channel_2.interrupt_en = 24234342;
+
   // channel specific
   timer_cfg->channel_2.interrupt_en = TIMER_INTERRUPT_ENABLE;
   timer_cfg->channel_2.ccr = 0;
@@ -187,17 +208,26 @@ int main(void) {
 }
 
 void timer_setup_test(void) {
+  int i = 0;  // To emulate what would happen in a loop
+  int input_filter_cnt = 10;
+
+  volatile uint32_t *ccmr_reg[] = TIMER_CCMR_REGS(INPUT_CAPTURE_ADDR);
+
+  // NOTE: Switch timer channel to 4 after
+
   // Timer 3 //
   //Input capture mode//
   RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM4EN_Pos);
 
-  TIM4->CR1 |= (1 << TIM_CR1_DIR_Pos);
+  INPUT_CAPTURE_ADDR->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
-  //Enable counter
   // 1.
   // Select the active input: TIMx_CCR1 must be linked to the TI1 input, so write the CC1S
   // bits to 01 in the TIMx_CCMR1 register. As soon as CC1S becomes different from 00,
   // the channel is configured in input and the TIMx_CCR1 register becomes read-only.
+  // NOTE: WHen implementing API, likely do this before putting in any ccr value
+  *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+  *ccmr_reg[i] |= (0b01 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
 
   // 2.
   // Program the appropriate input filter duration in relation with the signal connected to the

@@ -39,12 +39,21 @@
 #define USER_PBUTTON_PORT GPIOC
 #define USER_PBUTTON_PIN 13
 
+#define INPUT_CAPTURE_GPIO_ADDR GPIOB
+#define INPUT_CAPTURE_GPIO_PIN 6
+#define INPUT_CAPTURE_GPIO_ALT 2
+
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
 #define TIM_CHANNEL 1
 
 #define PWM_TIMER_ADDR TIM2
 #define PWM_CHANNEL 4
+
+#define INPUT_CAPTURE_ADDR TIM4
+#define INPUT_CAPTURE_CHAN 1
+#define OUTPUT_CAPTURE_CHAN_LO 2
+#define OUTPUT_CAPTURE_CHAN_HI 3
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -119,27 +128,40 @@ int main(void) {
   GPIO_init(&gpio_handle);
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
 
+  *gpio_addr = INPUT_CAPTURE_GPIO_ADDR;
+  gpio_cfg->GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
+  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_HIGH;
+  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;  // Will need a PD when using switch
+  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
+  gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
+  GPIO_init(&gpio_handle);
+
   TimerHandle_t timer_handle;
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
 
   // Timer 5 configuration
-  timer_peri_clock_control(TIM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
-  *timer_addr = TIM_TIMER_ADDR;
+  timer_peri_clock_control(INPUT_CAPTURE_ADDR, TIMER_PERI_CLOCK_ENABLE);
+  *timer_addr = INPUT_CAPTURE_ADDR;
 
   // overall timer specific
-  timer_cfg->prescaler = 999;  // 16E6 / (PSC + 1) = ~65536
-  timer_cfg->arr = 16;
-  timer_cfg->channel_count = 1;
+  timer_cfg->prescaler = 507;  // 16E6 / (PSC + 1) = ~65536
+  timer_cfg->arr = 0xFFFF;
+  timer_cfg->channel_count = 3;
 
   // channel specific
-  timer_cfg->channel_1.interrupt_en = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->channel_1.ccr = 0;
-  timer_cfg->channel_1.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
+  timer_cfg->channel_2.interrupt_en = TIMER_INTERRUPT_ENABLE;
+  timer_cfg->channel_2.ccr = 0;
+  timer_cfg->channel_2.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
+
+  timer_cfg->channel_3.interrupt_en = TIMER_INTERRUPT_ENABLE;
+  timer_cfg->channel_3.ccr = 0xFFFF / 4;
+  timer_cfg->channel_3.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
 
   // Initialize timer, enable the associated ISR
   timer_init(&timer_handle);
-  timer_irq_interrupt_config(TIM5_IRQn, TIMER_IRQ_ENABLE);
+  timer_irq_interrupt_config(TIM4_IRQn, TIMER_IRQ_ENABLE);
 
   // Timer 2 configuration
   timer_peri_clock_control(PWM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
@@ -164,40 +186,61 @@ int main(void) {
 }
 
 void timer_setup_test(void) {
-  // Timer 2 //
+  // Timer 3 //
+  //Input capture mode//
+  RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM4EN_Pos);
+
+  TIM4->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   //Enable counter
-  // 1. Select the counter clock (internal, external, prescaler).
-  RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM2EN_Pos);
+  // 1.
+  // Select the active input: TIMx_CCR1 must be linked to the TI1 input, so write the CC1S
+  // bits to 01 in the TIMx_CCMR1 register. As soon as CC1S becomes different from 00,
+  // the channel is configured in input and the TIMx_CCR1 register becomes read-only.
 
-  // Set timer 2 as upcounter
-  TIM2->CR1 |= (1 << TIM_CR1_DIR_Pos);
+  // 2.
+  // Program the appropriate input filter duration in relation with the signal connected to the
+  // timer (by programming the ICxF bits in the TIMx_CCMRx register if the input is one of
+  // the TIx inputs). Let’s imagine that, when toggling, the input signal is not stable during at
+  // must 5 internal clock cycles. We must program a filter duration longer than these 5
+  // clock cycles. We can validate a transition on TI1 when 8 consecutive samples with the
+  // new level have been detected (sampled at fDTS frequency). Then write IC1F bits to
+  // 0011 in the TIMx_CCMR1 register.
 
-  // 2. Write the desired data in the TIMx_ARR and TIMx_CCRx registers.
-  /* TIM2->ARR = 0xFFFF;         // Test these by toggling commenting on and off
-  TIM2->CCR1 = 0xFFFF - 800;  // Test these by toggling commenting on and off */
-  TIM2->CCR4 = 30;
-  TIM2->ARR = 200;
-  //
-  // Set the prescaler value
-  TIM2->PSC = 1000;
+  // 3.
+  // Select the edge of the active transition on the TI1 channel by writing the CC1P and
+  // CC1NP bits to 00 in the TIMx_CCER register (rising edge in this case).
 
-  // 4. Select the output mode. For example, one must write OCxM=011, OCxPE=0, CCxP=0 and CCxE=1 to toggle OCx output pin when CNT matches CCRx, CCRx preload is not used, OCx is enabled and active high.
-  TIM2->CCER |= (1 << TIM_CCER_CC4E_Pos);
-  TIM2->CCER &= ~(1 << TIM_CCER_CC4P_Pos);
-  TIM2->CCMR2 = (0b110 << TIM_CCMR2_OC4M_Pos);
+  // 4.
+  // Program the input prescaler. In our example, we wish the capture to be performed at
+  // each valid transition, so the prescaler is disabled (write IC1PS bits to 00 in the
+  // TIMx_CCMR1 register).
 
-  // 5. Enable the counter by setting the CEN bit in the TIMx_CR1 register.CR1_CEN;
-  TIM2->CR1 |= (1 << TIM_CR1_CEN_Pos);
+  // 5.
+  // Enable capture from the counter into the capture register by setting the CC1E bit in the
+  // TIMx_CCER register.
+
+  // 6.
+  // If needed, enable the related interrupt request by setting the CC1IE bit in the
+  // TIMx_DIER register, and/or the DMA request by setting the CC1DE bit in the
+  // TIMx_DIER register.
+
+  TIM4->CR1 |= (1 << TIM_CR1_CEN_Pos);
 }
 
-void TIM5_IRQHandler(void) {
-  static float pwm_alpha = 1;
-  pwm_alpha += 0.001;
-  if (pwm_alpha > 1.0) pwm_alpha = 0;
-
-  if (timer_irq_handling(TIM_TIMER_ADDR, TIM_CHANNEL)) {
+void TIM4_IRQHandler(void) {
+  if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
+    uint16_t capture_val = INPUT_CAPTURE_ADDR->CCR1;
+    float pwm_alpha = (float)capture_val / INPUT_CAPTURE_ADDR->ARR;
     timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
+  }
+
+  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_HI)) {
+    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
+  }
+
+  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_LO)) {
+    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
   }
 }
 

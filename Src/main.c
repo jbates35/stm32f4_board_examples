@@ -95,19 +95,20 @@ int main(void) {
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(GPIOB, GPIO_CLOCK_ENABLE);
+  GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_ADDR, GPIO_CLOCK_ENABLE);
+
+  GPIO_Handle_t gpio_handle_1 = {.p_GPIO_x = LED_GREEN_PORT,
+                                 .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
+                                                     .GPIO_pin_number = LED_GREEN_PIN,
+                                                     .GPIO_pin_speed = GPIO_SPEED_LOW,
+                                                     .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                     .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
+                                                     .GPIO_pin_alt_func_mode = 0}};
+  GPIO_init(&gpio_handle_1);
 
   GPIO_Handle_t gpio_handle;
   GPIO_TypeDef **gpio_addr = &gpio_handle.p_GPIO_x;
   GPIO_PinConfig_t *gpio_cfg = &gpio_handle.GPIO_pin_config;
-
-  *gpio_addr = LED_GREEN_PORT;
-  gpio_cfg->GPIO_pin_number = LED_GREEN_PIN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
-  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
-  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;
-  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = LED_GREEN_ALT_FN;
-  GPIO_init(&gpio_handle);
 
   *gpio_addr = GPIOB;
   gpio_cfg->GPIO_pin_number = 2;

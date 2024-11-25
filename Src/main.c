@@ -237,35 +237,43 @@ void timer_setup_test(void) {
   // clock cycles. We can validate a transition on TI1 when 8 consecutive samples with the
   // new level have been detected (sampled at fDTS frequency). Then write IC1F bits to
   // 0011 in the TIMx_CCMR1 register.
+  *ccmr_reg[i] &= ~(0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+  *ccmr_reg[i] |= (0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
 
   // 3.
   // Select the edge of the active transition on the TI1 channel by writing the CC1P and
   // CC1NP bits to 00 in the TIMx_CCER register (rising edge in this case).
+  INPUT_CAPTURE_ADDR->CCER &= ~(0b111 << (TIM_CCER_CC1P_Pos + i * 4));
+  INPUT_CAPTURE_ADDR->CCER &= (0b000 << (TIM_CCER_CC1P_Pos + i * 4));
+  // NOTE: When making API, 101 is both edges, 001 is falling edge, 000 is rising edge
 
   // 4.
   // Program the input prescaler. In our example, we wish the capture to be performed at
   // each valid transition, so the prescaler is disabled (write IC1PS bits to 00 in the
   // TIMx_CCMR1 register).
+  *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
+  *ccmr_reg[i] |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
 
   // 5.
   // Enable capture from the counter into the capture register by setting the CC1E bit in the
   // TIMx_CCER register.
+  INPUT_CAPTURE_ADDR->CCER |= (1 << (TIM_CCER_CC1E_Pos + i * 4));
 
   // 6.
   // If needed, enable the related interrupt request by setting the CC1IE bit in the
   // TIMx_DIER register, and/or the DMA request by setting the CC1DE bit in the
   // TIMx_DIER register.
+  INPUT_CAPTURE_ADDR->DIER |= (1 << (i + 1));
 
   TIM4->CR1 |= (1 << TIM_CR1_CEN_Pos);
 }
-
+/*
 void TIM4_IRQHandler(void) {
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
     uint16_t capture_val = INPUT_CAPTURE_ADDR->CCR1;
     float pwm_alpha = (float)capture_val / INPUT_CAPTURE_ADDR->ARR;
     timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
   }
-
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_HI)) {
     GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
   }

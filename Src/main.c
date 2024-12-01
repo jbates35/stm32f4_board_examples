@@ -39,7 +39,7 @@
 #define USER_PBUTTON_PORT GPIOC
 #define USER_PBUTTON_PIN 13
 
-#define INPUT_CAPTURE_GPIO_ADDR GPIOB
+#define INPUT_CAPTURE_GPIO_PORT GPIOB
 #define INPUT_CAPTURE_GPIO_PIN 6
 #define INPUT_CAPTURE_GPIO_ALT 2
 
@@ -113,8 +113,7 @@ int main(void) {
 
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_peri_clock_control(GPIOB, GPIO_CLOCK_ENABLE);
-  GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_ADDR, GPIO_CLOCK_ENABLE);
+  GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
 
   GPIO_Handle_t gpio_handle_1 = {.p_GPIO_x = LED_GREEN_PORT,
                                  .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
@@ -148,18 +147,21 @@ int main(void) {
   GPIO_init(&gpio_handle);
   GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
 
-  *gpio_addr = INPUT_CAPTURE_GPIO_ADDR;
+  *gpio_addr = INPUT_CAPTURE_GPIO_PORT;
   gpio_cfg->GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
+  // gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_IN;
   gpio_cfg->GPIO_pin_speed = GPIO_SPEED_HIGH;
-  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;  // Will need a PD when using switch
+  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;  // Will need a PD when using switch
   gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
+  // gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
   GPIO_init(&gpio_handle);
 
   TimerHandle_t timer_handle;
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
+
+  timer_setup_test();
 
   // Timer 5 configuration
   timer_peri_clock_control(INPUT_CAPTURE_ADDR, TIMER_PERI_CLOCK_ENABLE);
@@ -169,8 +171,6 @@ int main(void) {
   timer_cfg->prescaler = 507;  // 16E6 / (PSC + 1) = ~65536
   timer_cfg->arr = 0xFFFF;
   timer_cfg->channel_count = 3;
-
-  timer_cfg->channel_2.interrupt_en = 24234342;
 
   // channel specific
   timer_cfg->channel_2.interrupt_en = TIMER_INTERRUPT_ENABLE;
@@ -204,6 +204,9 @@ int main(void) {
 
   /* Loop forever */
   for (;;) {
+    uint8_t val = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
+    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, val);
+    WAIT(FAST);
   }
 }
 
@@ -220,6 +223,9 @@ void timer_setup_test(void) {
   RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM4EN_Pos);
 
   INPUT_CAPTURE_ADDR->CR1 |= (1 << TIM_CR1_DIR_Pos);
+
+  ccmr_reg[0] = 0;
+  ccmr_reg[1] = 0;
 
   // 1.
   // Select the active input: TIMx_CCR1 must be linked to the TI1 input, so write the CC1S
@@ -244,7 +250,7 @@ void timer_setup_test(void) {
   // Select the edge of the active transition on the TI1 channel by writing the CC1P and
   // CC1NP bits to 00 in the TIMx_CCER register (rising edge in this case).
   INPUT_CAPTURE_ADDR->CCER &= ~(0b111 << (TIM_CCER_CC1P_Pos + i * 4));
-  INPUT_CAPTURE_ADDR->CCER &= (0b000 << (TIM_CCER_CC1P_Pos + i * 4));
+  INPUT_CAPTURE_ADDR->CCER |= (0b000 << (TIM_CCER_CC1P_Pos + i * 4));
   // NOTE: When making API, 101 is both edges, 001 is falling edge, 000 is rising edge
 
   // 4.
@@ -267,7 +273,7 @@ void timer_setup_test(void) {
 
   TIM4->CR1 |= (1 << TIM_CR1_CEN_Pos);
 }
-/*
+
 void TIM4_IRQHandler(void) {
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
     uint16_t capture_val = INPUT_CAPTURE_ADDR->CCR1;

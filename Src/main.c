@@ -149,41 +149,35 @@ int main(void) {
 
   *gpio_addr = INPUT_CAPTURE_GPIO_PORT;
   gpio_cfg->GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN;
-  // gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_IN;
+  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
+  // gpio_cfg->GPIO_pin_mode = GPIO_MODE_IN;
   gpio_cfg->GPIO_pin_speed = GPIO_SPEED_HIGH;
   gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;  // Will need a PD when using switch
   gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  // gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
+  gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
   GPIO_init(&gpio_handle);
+
+  TimerHandle_t tim4_handle = {
+      .p_base_addr = TIM4,
+      .cfg = {
+          .arr = 0xffff,
+          .prescaler = 507,
+          .channel_count = 3,
+          .channel_1 = {.gpio_en = TIMER_GPIO_DISABLE,
+                        .channel_mode = TIMER_CHANNEL_MODE_CAPTURE,
+                        .interrupt_en = TIMER_INTERRUPT_ENABLE,
+                        .capture_edge = TIMER_CAPTURE_BOTH_EDGE,
+                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM},
+          .channel_2 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0},
+          .channel_3 = {
+              .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
+  timer_peri_clock_control(INPUT_CAPTURE_ADDR, TIMER_PERI_CLOCK_ENABLE);
+  timer_init(&tim4_handle);
+  NVIC_EnableIRQ(TIM4_IRQn);
 
   TimerHandle_t timer_handle;
   TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
   TimerConfig_t *timer_cfg = &timer_handle.cfg;
-
-  timer_setup_test();
-
-  // Timer 5 configuration
-  timer_peri_clock_control(INPUT_CAPTURE_ADDR, TIMER_PERI_CLOCK_ENABLE);
-  *timer_addr = INPUT_CAPTURE_ADDR;
-
-  // overall timer specific
-  timer_cfg->prescaler = 507;  // 16E6 / (PSC + 1) = ~65536
-  timer_cfg->arr = 0xFFFF;
-  timer_cfg->channel_count = 3;
-
-  // channel specific
-  timer_cfg->channel_2.interrupt_en = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->channel_2.ccr = 0;
-  timer_cfg->channel_2.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
-
-  timer_cfg->channel_3.interrupt_en = TIMER_INTERRUPT_ENABLE;
-  timer_cfg->channel_3.ccr = 0xFFFF / 4;
-  timer_cfg->channel_3.channel_mode = TIMER_CHANNEL_MODE_COMPARE;
-
-  // Initialize timer, enable the associated ISR
-  timer_init(&timer_handle);
-  timer_irq_interrupt_config(TIM4_IRQn, TIMER_IRQ_ENABLE);
 
   // Timer 2 configuration
   timer_peri_clock_control(PWM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
@@ -202,16 +196,18 @@ int main(void) {
 
   timer_init(&timer_handle);
 
+  timer_setup_test();
+
   /* Loop forever */
   for (;;) {
-    uint8_t val = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, val);
+    // uint8_t val = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
+    // GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, val);
     WAIT(FAST);
   }
 }
 
 void timer_setup_test(void) {
-  int i = 0;  // To emulate what would happen in a loop
+  int ind = 0;  // To emulate what would happen in a loop
   int input_filter_cnt = 10;
 
   volatile uint32_t *ccmr_reg[] = TIMER_CCMR_REGS(INPUT_CAPTURE_ADDR);
@@ -221,19 +217,28 @@ void timer_setup_test(void) {
   // Timer 3 //
   //Input capture mode//
   RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM4EN_Pos);
+  TIM4->CR1 &= ~(1 << TIM_CR1_CEN_Pos);
 
-  INPUT_CAPTURE_ADDR->CR1 |= (1 << TIM_CR1_DIR_Pos);
+  // INPUT_CAPTURE_ADDR->CR1 |= (1 << TIM_CR1_DIR_Pos);
 
   ccmr_reg[0] = 0;
   ccmr_reg[1] = 0;
+
+  // Set the frequency of the timer
+  TIM4->PSC = 507;
+  TIM4->ARR = 0xffff;
 
   // 1.
   // Select the active input: TIMx_CCR1 must be linked to the TI1 input, so write the CC1S
   // bits to 01 in the TIMx_CCMR1 register. As soon as CC1S becomes different from 00,
   // the channel is configured in input and the TIMx_CCR1 register becomes read-only.
   // NOTE: WHen implementing API, likely do this before putting in any ccr value
-  *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-  *ccmr_reg[i] |= (0b01 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+
+  // *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+  // *ccmr_reg[i] |= (0b01 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+
+  TIM4->CCMR1 &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + ind * 8) % 16));
+  TIM4->CCMR1 |= (0b01 << ((TIM_CCMR1_CC1S_Pos + ind * 8) % 16));
 
   // 2.
   // Program the appropriate input filter duration in relation with the signal connected to the
@@ -243,43 +248,63 @@ void timer_setup_test(void) {
   // clock cycles. We can validate a transition on TI1 when 8 consecutive samples with the
   // new level have been detected (sampled at fDTS frequency). Then write IC1F bits to
   // 0011 in the TIMx_CCMR1 register.
-  *ccmr_reg[i] &= ~(0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-  *ccmr_reg[i] |= (0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+
+  // *ccmr_reg[i] &= ~(0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+  // *ccmr_reg[i] |= (0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
+
+  TIM4->CCMR1 &= ~(0b1111 << ((TIM_CCMR1_IC1F_Pos + ind * 8) % 16));
+  TIM4->CCMR1 |= (0b1111 << ((TIM_CCMR1_IC1F_Pos + ind * 8) % 16));
 
   // 3.
   // Select the edge of the active transition on the TI1 channel by writing the CC1P and
   // CC1NP bits to 00 in the TIMx_CCER register (rising edge in this case).
-  INPUT_CAPTURE_ADDR->CCER &= ~(0b111 << (TIM_CCER_CC1P_Pos + i * 4));
-  INPUT_CAPTURE_ADDR->CCER |= (0b000 << (TIM_CCER_CC1P_Pos + i * 4));
+  INPUT_CAPTURE_ADDR->CCER &= ~(0b111 << (TIM_CCER_CC1P_Pos + ind * 4));
+  INPUT_CAPTURE_ADDR->CCER |= (0b101 << (TIM_CCER_CC1P_Pos + ind * 4));
   // NOTE: When making API, 101 is both edges, 001 is falling edge, 000 is rising edge
 
   // 4.
   // Program the input prescaler. In our example, we wish the capture to be performed at
   // each valid transition, so the prescaler is disabled (write IC1PS bits to 00 in the
   // TIMx_CCMR1 register).
-  *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
-  *ccmr_reg[i] |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
+
+  // *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
+  // *ccmr_reg[i] |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
+
+  TIM4->CCMR1 &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + ind * 8) % 16));
+  TIM4->CCMR1 |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + ind * 8) % 16));
 
   // 5.
   // Enable capture from the counter into the capture register by setting the CC1E bit in the
   // TIMx_CCER register.
-  INPUT_CAPTURE_ADDR->CCER |= (1 << (TIM_CCER_CC1E_Pos + i * 4));
+  INPUT_CAPTURE_ADDR->CCER |= (1 << (TIM_CCER_CC1E_Pos + ind * 4));
 
   // 6.
   // If needed, enable the related interrupt request by setting the CC1IE bit in the
   // TIMx_DIER register, and/or the DMA request by setting the CC1DE bit in the
   // TIMx_DIER register.
-  INPUT_CAPTURE_ADDR->DIER |= (1 << (i + 1));
+  INPUT_CAPTURE_ADDR->DIER |= (1 << (ind + 1));
 
   TIM4->CR1 |= (1 << TIM_CR1_CEN_Pos);
 }
 
 void TIM4_IRQHandler(void) {
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
-    uint16_t capture_val = INPUT_CAPTURE_ADDR->CCR1;
-    float pwm_alpha = (float)capture_val / INPUT_CAPTURE_ADDR->ARR;
-    timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
+    uint8_t rising_edge = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
+    static uint16_t capture_val = 0;
+    static uint16_t capture_val_falling = 0;
+
+    // Rising edge
+    if (rising_edge) {
+      capture_val_falling = INPUT_CAPTURE_ADDR->CCR1;
+    }
+    // Falling edge
+    else {
+      capture_val = INPUT_CAPTURE_ADDR->CCR1 - capture_val_falling;
+      float pwm_alpha = (float)capture_val / INPUT_CAPTURE_ADDR->ARR;
+      timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
+    }
   }
+
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_HI)) {
     GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
   }

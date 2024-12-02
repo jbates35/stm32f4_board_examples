@@ -59,55 +59,6 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-void timer_setup_test(void);
-
-/****** CUSTOM TIMER.h CODE STARTS HERE *******
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- **/
-#define TIMERS {TIM1, TIM2, TIM3, TIM4, TIM5, TIM6, TIM7, TIM8, TIM9, TIM10, TIM11, TIM12, TIM13, TIM14}
-#define TIMERS_RCC_REGS                                                                                     \
-  {&RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR, \
-   &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB2ENR, &RCC->APB1ENR, &RCC->APB1ENR, &RCC->APB1ENR}
-#define TIMERS_RCC_POS                                                                                    \
-  {                                                                                                       \
-      RCC_APB2ENR_TIM1EN_Pos,  RCC_APB1ENR_TIM2EN_Pos,  RCC_APB1ENR_TIM3EN_Pos,  RCC_APB1ENR_TIM4EN_Pos,  \
-      RCC_APB1ENR_TIM5EN_Pos,  RCC_APB1ENR_TIM6EN_Pos,  RCC_APB1ENR_TIM7EN_Pos,  RCC_APB2ENR_TIM8EN_Pos,  \
-      RCC_APB2ENR_TIM9EN_Pos,  RCC_APB2ENR_TIM10EN_Pos, RCC_APB2ENR_TIM11EN_Pos, RCC_APB1ENR_TIM12EN_Pos, \
-      RCC_APB1ENR_TIM13EN_Pos, RCC_APB1ENR_TIM14EN_Pos,                                                   \
-  }
-
-#define TIMER_CCR_REGS(timer) {&timer->CCR1, &timer->CCR2, &timer->CCR3, &timer->CCR4}
-#define TIMER_CCMR_REGS(timer) {&timer->CCMR1, &timer->CCMR1, &timer->CCMR2, &timer->CCMR2}
-
-#define SIZEOF(arr) ((int)sizeof(arr) / sizeof(arr[0]))
-#define SIZEOFP(arr) ((int)sizeof(arr) / sizeof(uint32_t))  // Memory size of stm32f4
-
-#define CHANNEL_CONFIGS(cfg) {&cfg->channel_1, &cfg->channel_2, &cfg->channel_3, &cfg->channel_4}
-
-/****** END OF CUSTOM TIMER.h CODE STARTS HERE *******
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- *
- **/
-
 int main(void) {
   // RCC->CR |= RCC_CR_
 
@@ -163,7 +114,7 @@ int main(void) {
           .arr = 0xffff,
           .prescaler = 507,
           .channel_count = 3,
-          .channel_1 = {.gpio_en = TIMER_GPIO_DISABLE,
+          .channel_1 = {.gpio_en = TIMER_GPIO_ENABLE,
                         .channel_mode = TIMER_CHANNEL_MODE_CAPTURE,
                         .interrupt_en = TIMER_INTERRUPT_ENABLE,
                         .capture_edge = TIMER_CAPTURE_BOTH_EDGE,
@@ -196,95 +147,12 @@ int main(void) {
 
   timer_init(&timer_handle);
 
-  timer_setup_test();
-
   /* Loop forever */
   for (;;) {
     // uint8_t val = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
     // GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, val);
     WAIT(FAST);
   }
-}
-
-void timer_setup_test(void) {
-  int ind = 0;  // To emulate what would happen in a loop
-  int input_filter_cnt = 10;
-
-  volatile uint32_t *ccmr_reg[] = TIMER_CCMR_REGS(INPUT_CAPTURE_ADDR);
-
-  // NOTE: Switch timer channel to 4 after
-
-  // Timer 3 //
-  //Input capture mode//
-  RCC->APB1ENR |= (1 << RCC_APB1ENR_TIM4EN_Pos);
-  TIM4->CR1 &= ~(1 << TIM_CR1_CEN_Pos);
-
-  // INPUT_CAPTURE_ADDR->CR1 |= (1 << TIM_CR1_DIR_Pos);
-
-  ccmr_reg[0] = 0;
-  ccmr_reg[1] = 0;
-
-  // Set the frequency of the timer
-  TIM4->PSC = 507;
-  TIM4->ARR = 0xffff;
-
-  // 1.
-  // Select the active input: TIMx_CCR1 must be linked to the TI1 input, so write the CC1S
-  // bits to 01 in the TIMx_CCMR1 register. As soon as CC1S becomes different from 00,
-  // the channel is configured in input and the TIMx_CCR1 register becomes read-only.
-  // NOTE: WHen implementing API, likely do this before putting in any ccr value
-
-  // *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-  // *ccmr_reg[i] |= (0b01 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-
-  TIM4->CCMR1 &= ~(0b11 << ((TIM_CCMR1_CC1S_Pos + ind * 8) % 16));
-  TIM4->CCMR1 |= (0b01 << ((TIM_CCMR1_CC1S_Pos + ind * 8) % 16));
-
-  // 2.
-  // Program the appropriate input filter duration in relation with the signal connected to the
-  // timer (by programming the ICxF bits in the TIMx_CCMRx register if the input is one of
-  // the TIx inputs). Let’s imagine that, when toggling, the input signal is not stable during at
-  // must 5 internal clock cycles. We must program a filter duration longer than these 5
-  // clock cycles. We can validate a transition on TI1 when 8 consecutive samples with the
-  // new level have been detected (sampled at fDTS frequency). Then write IC1F bits to
-  // 0011 in the TIMx_CCMR1 register.
-
-  // *ccmr_reg[i] &= ~(0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-  // *ccmr_reg[i] |= (0b1111 << ((TIM_CCMR1_CC1S_Pos + i * 8) % 16));
-
-  TIM4->CCMR1 &= ~(0b1111 << ((TIM_CCMR1_IC1F_Pos + ind * 8) % 16));
-  TIM4->CCMR1 |= (0b1111 << ((TIM_CCMR1_IC1F_Pos + ind * 8) % 16));
-
-  // 3.
-  // Select the edge of the active transition on the TI1 channel by writing the CC1P and
-  // CC1NP bits to 00 in the TIMx_CCER register (rising edge in this case).
-  INPUT_CAPTURE_ADDR->CCER &= ~(0b111 << (TIM_CCER_CC1P_Pos + ind * 4));
-  INPUT_CAPTURE_ADDR->CCER |= (0b101 << (TIM_CCER_CC1P_Pos + ind * 4));
-  // NOTE: When making API, 101 is both edges, 001 is falling edge, 000 is rising edge
-
-  // 4.
-  // Program the input prescaler. In our example, we wish the capture to be performed at
-  // each valid transition, so the prescaler is disabled (write IC1PS bits to 00 in the
-  // TIMx_CCMR1 register).
-
-  // *ccmr_reg[i] &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
-  // *ccmr_reg[i] |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + i * 8) % 16));
-
-  TIM4->CCMR1 &= ~(0b11 << ((TIM_CCMR1_IC1PSC_Pos + ind * 8) % 16));
-  TIM4->CCMR1 |= (0b00 << ((TIM_CCMR1_IC1PSC_Pos + ind * 8) % 16));
-
-  // 5.
-  // Enable capture from the counter into the capture register by setting the CC1E bit in the
-  // TIMx_CCER register.
-  INPUT_CAPTURE_ADDR->CCER |= (1 << (TIM_CCER_CC1E_Pos + ind * 4));
-
-  // 6.
-  // If needed, enable the related interrupt request by setting the CC1IE bit in the
-  // TIMx_DIER register, and/or the DMA request by setting the CC1DE bit in the
-  // TIMx_DIER register.
-  INPUT_CAPTURE_ADDR->DIER |= (1 << (ind + 1));
-
-  TIM4->CR1 |= (1 << TIM_CR1_CEN_Pos);
 }
 
 void TIM4_IRQHandler(void) {
@@ -295,12 +163,12 @@ void TIM4_IRQHandler(void) {
 
     // Rising edge
     if (rising_edge) {
-      capture_val_falling = INPUT_CAPTURE_ADDR->CCR1;
+      capture_val_falling = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN);
     }
     // Falling edge
     else {
-      capture_val = INPUT_CAPTURE_ADDR->CCR1 - capture_val_falling;
-      float pwm_alpha = (float)capture_val / INPUT_CAPTURE_ADDR->ARR;
+      capture_val = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN) - capture_val_falling;
+      float pwm_alpha = (float)capture_val / timer_get_period_ticks(INPUT_CAPTURE_ADDR);
       timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
     }
   }

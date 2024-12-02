@@ -52,8 +52,8 @@
 
 #define INPUT_CAPTURE_ADDR TIM4
 #define INPUT_CAPTURE_CHAN 1
-#define OUTPUT_CAPTURE_CHAN_LO 2
-#define OUTPUT_CAPTURE_CHAN_HI 3
+#define OUTPUT_COMPARE_CHAN_LO 2
+#define OUTPUT_COMPARE_CHAN_HI 3
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -174,11 +174,11 @@ void TIM4_IRQHandler(void) {
     }
   }
 
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_HI)) {
+  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_HI)) {
     GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
   }
 
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_CAPTURE_CHAN_LO)) {
+  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_LO)) {
     GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
   }
 }

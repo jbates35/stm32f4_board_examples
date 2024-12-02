@@ -65,6 +65,7 @@ int main(void) {
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  // TODO: Add a PWM Channel and then save this as an sample in old mains
 
   GPIO_Handle_t gpio_handle_1 = {.p_GPIO_x = LED_GREEN_PORT,
                                  .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,

@@ -41,14 +41,18 @@
 
 #define INPUT_CAPTURE_GPIO_PORT GPIOB
 #define INPUT_CAPTURE_GPIO_PIN 6
-#define INPUT_CAPTURE_GPIO_ALT 2
+#define INPUT_CAPTURE_GPIO_ALT_FN 2
+
+#define PWM_GPIO_PORT GPIOB
+#define PWM_GPIO_PIN 3
+#define PWM_GPIO_ALT_FN 1
 
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
 #define TIM_CHANNEL 1
 
 #define PWM_TIMER_ADDR TIM2
-#define PWM_CHANNEL 4
+#define PWM_CHANNEL 2
 
 #define INPUT_CAPTURE_ADDR TIM4
 #define INPUT_CAPTURE_CHAN 1
@@ -60,55 +64,64 @@
 #endif
 
 int main(void) {
-  // RCC->CR |= RCC_CR_
-
+  // GPIO Instantiation
+  // Green LED for PA5 (on nucleo board)
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_Handle_t led_green_handler = {.p_GPIO_addr = LED_GREEN_PORT,
+                                     .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
+                                                         .GPIO_pin_number = LED_GREEN_PIN,
+                                                         .GPIO_pin_speed = GPIO_SPEED_LOW,
+                                                         .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                         .GPIO_pin_pupd_control = GPIO_PUPDR_NONE}};
+  GPIO_init(&led_green_handler);
+
+  // PWM Output externally wired to PB3, attached later to timer 2 channel 2
+  GPIO_peri_clock_control(PWM_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_Handle_t pwm_handler = {.p_GPIO_addr = PWM_GPIO_PORT,
+                               .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
+                                                   .GPIO_pin_number = PWM_GPIO_PIN,
+                                                   .GPIO_pin_speed = GPIO_SPEED_MEDIUM,
+                                                   .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                   .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
+                                                   .GPIO_pin_alt_func_mode = PWM_GPIO_ALT_FN}};
+  GPIO_init(&pwm_handler);
+
+  // User button on PC13, attached to a falling edge interrupt IRQ
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_Handle_t user_btn_handler = {.p_GPIO_addr = USER_PBUTTON_PORT,
+                                    .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_IT_FT,
+                                                        .GPIO_pin_number = USER_PBUTTON_PIN,
+                                                        .GPIO_pin_speed = GPIO_SPEED_LOW,
+                                                        .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                        .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN}};
+  GPIO_init(&user_btn_handler);
+  NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+  // Input capture on PB6, tied to a timer interrupt which captures the pulse width on timer 4 channel 1
   GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  // TODO: Add a PWM Channel and then save this as an sample in old mains
+  GPIO_Handle_t capture_handler = {.p_GPIO_addr = INPUT_CAPTURE_GPIO_PORT,
+                                   .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
+                                                       .GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN,
+                                                       .GPIO_pin_speed = GPIO_SPEED_HIGH,
+                                                       .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                       .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN,
+                                                       .GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT_FN}};
+  GPIO_init(&capture_handler);
 
-  GPIO_Handle_t gpio_handle_1 = {.p_GPIO_x = LED_GREEN_PORT,
-                                 .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
-                                                     .GPIO_pin_number = LED_GREEN_PIN,
-                                                     .GPIO_pin_speed = GPIO_SPEED_LOW,
-                                                     .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                     .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
-                                                     .GPIO_pin_alt_func_mode = 0}};
-  GPIO_init(&gpio_handle_1);
+  // For PWM on PB11
+  timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
+  TimerHandle_t tim2_handle = {.p_base_addr = TIM2,
+                               .cfg = {.arr = 1000,
+                                       .channel_count = 4,
+                                       .prescaler = 253,
+                                       .channel_2 = {.gpio_en = TIMER_GPIO_ENABLE,
+                                                     .interrupt_en = TIMER_INTERRUPT_DISABLE,
+                                                     .channel_mode = TIMER_CHANNEL_MODE_PWM_HI,
+                                                     .ccr = 0}}};
+  timer_init(&tim2_handle);
 
-  GPIO_Handle_t gpio_handle;
-  GPIO_TypeDef **gpio_addr = &gpio_handle.p_GPIO_x;
-  GPIO_PinConfig_t *gpio_cfg = &gpio_handle.GPIO_pin_config;
-
-  *gpio_addr = GPIOB;
-  gpio_cfg->GPIO_pin_number = 2;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
-  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
-  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_NONE;
-  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = 1;
-  GPIO_init(&gpio_handle);
-
-  *gpio_addr = USER_PBUTTON_PORT;
-  gpio_cfg->GPIO_pin_number = USER_PBUTTON_PIN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_IT_FT;
-  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_LOW;
-  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;
-  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = 0;
-  GPIO_init(&gpio_handle);
-  GPIO_irq_interrupt_config(EXTI15_10_IRQn, GPIO_INT_ENABLE);
-
-  *gpio_addr = INPUT_CAPTURE_GPIO_PORT;
-  gpio_cfg->GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN;
-  gpio_cfg->GPIO_pin_mode = GPIO_MODE_ALTFN;
-  // gpio_cfg->GPIO_pin_mode = GPIO_MODE_IN;
-  gpio_cfg->GPIO_pin_speed = GPIO_SPEED_HIGH;
-  gpio_cfg->GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN;  // Will need a PD when using switch
-  gpio_cfg->GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL;
-  gpio_cfg->GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT;
-  GPIO_init(&gpio_handle);
-
+  // For input capture on PB6 and some compare channels (2&3)
+  timer_peri_clock_control(TIM4, TIMER_PERI_CLOCK_ENABLE);
   TimerHandle_t tim4_handle = {
       .p_base_addr = TIM4,
       .cfg = {
@@ -123,36 +136,11 @@ int main(void) {
           .channel_2 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0},
           .channel_3 = {
               .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
-  timer_peri_clock_control(INPUT_CAPTURE_ADDR, TIMER_PERI_CLOCK_ENABLE);
   timer_init(&tim4_handle);
   NVIC_EnableIRQ(TIM4_IRQn);
 
-  TimerHandle_t timer_handle;
-  TIM_TypeDef **timer_addr = &timer_handle.p_base_addr;
-  TimerConfig_t *timer_cfg = &timer_handle.cfg;
-
-  // Timer 2 configuration
-  timer_peri_clock_control(PWM_TIMER_ADDR, TIMER_PERI_CLOCK_ENABLE);
-  *timer_addr = PWM_TIMER_ADDR;
-
-  // overall timer specific
-  timer_cfg->prescaler = 253;  // 16M / (PSC + 1) = ~65536
-  timer_cfg->arr = 1000;
-  timer_cfg->channel_count = 4;
-
-  // channel specific
-  timer_cfg->channel_4.interrupt_en = TIMER_INTERRUPT_DISABLE;
-  timer_cfg->channel_4.ccr = 0;
-  timer_cfg->channel_4.channel_mode = TIMER_CHANNEL_MODE_PWM_HI;
-  timer_cfg->channel_4.gpio_en = TIMER_GPIO_ENABLE;
-
-  timer_init(&timer_handle);
-
   /* Loop forever */
   for (;;) {
-    // uint8_t val = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
-    // GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, val);
-    WAIT(FAST);
   }
 }
 
@@ -185,6 +173,6 @@ void TIM4_IRQHandler(void) {
 
 void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
+    timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, 0);
   }
 }

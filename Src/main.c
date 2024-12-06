@@ -63,51 +63,64 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
+void setup_gpio();
+void setup_timers();
+
 int main(void) {
-  // GPIO Instantiation
+  setup_gpio();
+  setup_timers();
+
+  /* Loop forever */
+  for (;;) {
+  }
+}
+
+void setup_gpio() {
   // Green LED for PA5 (on nucleo board)
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_Handle_t led_green_handler = {.p_GPIO_addr = LED_GREEN_PORT,
-                                     .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
-                                                         .GPIO_pin_number = LED_GREEN_PIN,
-                                                         .GPIO_pin_speed = GPIO_SPEED_LOW,
-                                                         .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                         .GPIO_pin_pupd_control = GPIO_PUPDR_NONE}};
+  GPIOHandle_t led_green_handler = {.p_GPIO_addr = LED_GREEN_PORT,
+                                    .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
+                                                        .GPIO_pin_number = LED_GREEN_PIN,
+                                                        .GPIO_pin_speed = GPIO_SPEED_LOW,
+                                                        .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                        .GPIO_pin_pupd_control = GPIO_PUPDR_NONE}};
   GPIO_init(&led_green_handler);
 
   // PWM Output externally wired to PB3, attached later to timer 2 channel 2
   GPIO_peri_clock_control(PWM_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_Handle_t pwm_handler = {.p_GPIO_addr = PWM_GPIO_PORT,
-                               .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
-                                                   .GPIO_pin_number = PWM_GPIO_PIN,
-                                                   .GPIO_pin_speed = GPIO_SPEED_MEDIUM,
-                                                   .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                   .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
-                                                   .GPIO_pin_alt_func_mode = PWM_GPIO_ALT_FN}};
+  GPIOHandle_t pwm_handler = {.p_GPIO_addr = PWM_GPIO_PORT,
+                              .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
+                                                  .GPIO_pin_number = PWM_GPIO_PIN,
+                                                  .GPIO_pin_speed = GPIO_SPEED_MEDIUM,
+                                                  .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                  .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
+                                                  .GPIO_pin_alt_func_mode = PWM_GPIO_ALT_FN}};
   GPIO_init(&pwm_handler);
 
   // User button on PC13, attached to a falling edge interrupt IRQ
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_Handle_t user_btn_handler = {.p_GPIO_addr = USER_PBUTTON_PORT,
-                                    .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_IT_FT,
-                                                        .GPIO_pin_number = USER_PBUTTON_PIN,
-                                                        .GPIO_pin_speed = GPIO_SPEED_LOW,
-                                                        .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                        .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN}};
+  GPIOHandle_t user_btn_handler = {.p_GPIO_addr = USER_PBUTTON_PORT,
+                                   .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_IT_FT,
+                                                       .GPIO_pin_number = USER_PBUTTON_PIN,
+                                                       .GPIO_pin_speed = GPIO_SPEED_LOW,
+                                                       .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                       .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN}};
   GPIO_init(&user_btn_handler);
   NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   // Input capture on PB6, tied to a timer interrupt which captures the pulse width on timer 4 channel 1
   GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_Handle_t capture_handler = {.p_GPIO_addr = INPUT_CAPTURE_GPIO_PORT,
-                                   .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
-                                                       .GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN,
-                                                       .GPIO_pin_speed = GPIO_SPEED_HIGH,
-                                                       .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                       .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN,
-                                                       .GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT_FN}};
+  GPIOHandle_t capture_handler = {.p_GPIO_addr = INPUT_CAPTURE_GPIO_PORT,
+                                  .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
+                                                      .GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN,
+                                                      .GPIO_pin_speed = GPIO_SPEED_HIGH,
+                                                      .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                                      .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN,
+                                                      .GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT_FN}};
   GPIO_init(&capture_handler);
+}
 
+void setup_timers() {
   // For PWM on PB11
   timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
   TimerHandle_t tim2_handle = {.p_base_addr = TIM2,
@@ -138,12 +151,9 @@ int main(void) {
               .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
   timer_init(&tim4_handle);
   NVIC_EnableIRQ(TIM4_IRQn);
-
-  /* Loop forever */
-  for (;;) {
-  }
 }
 
+////// INTERRUPTS ///////
 void TIM4_IRQHandler(void) {
   if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
     uint8_t rising_edge = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
@@ -175,4 +185,54 @@ void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
     timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, 0);
   }
+}
+////// END INTERRUPTS ///////
+
+void spi_setup_test() {
+  // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
+
+  // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
+  GPIOConfig_t default_gpio_cfg = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
+                                   .GPIO_pin_speed = GPIO_SPEED_HIGH,
+                                   .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
+                                   .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
+                                   .GPIO_pin_alt_func_mode = 5};
+
+  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
+  spi_gpio_clk_handle.GPIO_pin_config.GPIO_pin_number = 5;
+  GPIO_init(&spi_gpio_clk_handle);
+
+  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
+  spi_gpio_miso_handle.GPIO_pin_config.GPIO_pin_number = 6;
+  GPIO_init(&spi_gpio_miso_handle);
+
+  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
+  spi_gpio_mosi_handle.GPIO_pin_config.GPIO_pin_number = 7;
+  GPIO_init(&spi_gpio_mosi_handle);
+
+  // 2.Write to the SPI_CR1 register:
+
+  // 3. Note:  a)Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
+
+  // b)Configure the CPOL and CPHA bits combination to define one of the fou  relationships between the data transfer and the serial clock. (Note: 2 - except the  case when CRC is enabled at TI mode).
+
+  // c)Select simplex or half-duplex mode by configuring RXONLY or BIDIMODE and BIDIOE (RXONLY and BIDIMODE can't be set at the same time).
+
+  // d)Configure the LSBFIRST bit to define the frame format (Note: 2).
+
+  // e)Configure the CRCEN and CRCEN bits if CRC is needed (while SCK clock signal is at idle state
+
+  // f)Configure SSM and SSI (Note: 2).
+
+  // g)Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
+
+  // h)Set the DFF bit to configure the data frame format (8 or 16 bits). Write to SPI_CR2 register:
+
+  //    a)Configure SSOE (Note: 1 & 2).
+
+  //    b)Set the FRF bit if the TI protocol is required.
+
+  // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
+
+  // 5.Write proper DMA registers: Configure DMA streams dedicated for SPI Tx and Rx in DMA registers if the DMA streams are used.
 }

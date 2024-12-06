@@ -79,44 +79,44 @@ void setup_gpio() {
   // Green LED for PA5 (on nucleo board)
   GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t led_green_handler = {.p_GPIO_addr = LED_GREEN_PORT,
-                                    .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_OUT,
-                                                        .GPIO_pin_number = LED_GREEN_PIN,
-                                                        .GPIO_pin_speed = GPIO_SPEED_LOW,
-                                                        .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                        .GPIO_pin_pupd_control = GPIO_PUPDR_NONE}};
+                                    .cfg = {.mode = GPIO_MODE_OUT,
+                                            .pin_number = LED_GREEN_PIN,
+                                            .speed = GPIO_SPEED_LOW,
+                                            .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                            .float_resistor = GPIO_PUPDR_NONE}};
   GPIO_init(&led_green_handler);
 
   // PWM Output externally wired to PB3, attached later to timer 2 channel 2
   GPIO_peri_clock_control(PWM_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t pwm_handler = {.p_GPIO_addr = PWM_GPIO_PORT,
-                              .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
-                                                  .GPIO_pin_number = PWM_GPIO_PIN,
-                                                  .GPIO_pin_speed = GPIO_SPEED_MEDIUM,
-                                                  .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                  .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
-                                                  .GPIO_pin_alt_func_mode = PWM_GPIO_ALT_FN}};
+                              .cfg = {.mode = GPIO_MODE_ALTFN,
+                                      .pin_number = PWM_GPIO_PIN,
+                                      .speed = GPIO_SPEED_MEDIUM,
+                                      .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                      .float_resistor = GPIO_PUPDR_NONE,
+                                      .alt_func_num = PWM_GPIO_ALT_FN}};
   GPIO_init(&pwm_handler);
 
   // User button on PC13, attached to a falling edge interrupt IRQ
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t user_btn_handler = {.p_GPIO_addr = USER_PBUTTON_PORT,
-                                   .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_IT_FT,
-                                                       .GPIO_pin_number = USER_PBUTTON_PIN,
-                                                       .GPIO_pin_speed = GPIO_SPEED_LOW,
-                                                       .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                       .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN}};
+                                   .cfg = {.mode = GPIO_MODE_IT_FT,
+                                           .pin_number = USER_PBUTTON_PIN,
+                                           .speed = GPIO_SPEED_LOW,
+                                           .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                           .float_resistor = GPIO_PUPDR_PULLDOWN}};
   GPIO_init(&user_btn_handler);
   NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   // Input capture on PB6, tied to a timer interrupt which captures the pulse width on timer 4 channel 1
   GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t capture_handler = {.p_GPIO_addr = INPUT_CAPTURE_GPIO_PORT,
-                                  .GPIO_pin_config = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
-                                                      .GPIO_pin_number = INPUT_CAPTURE_GPIO_PIN,
-                                                      .GPIO_pin_speed = GPIO_SPEED_HIGH,
-                                                      .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                                      .GPIO_pin_pupd_control = GPIO_PUPDR_PULLDOWN,
-                                                      .GPIO_pin_alt_func_mode = INPUT_CAPTURE_GPIO_ALT_FN}};
+                                  .cfg = {.mode = GPIO_MODE_ALTFN,
+                                          .pin_number = INPUT_CAPTURE_GPIO_PIN,
+                                          .speed = GPIO_SPEED_HIGH,
+                                          .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                          .float_resistor = GPIO_PUPDR_PULLDOWN,
+                                          .alt_func_num = INPUT_CAPTURE_GPIO_ALT_FN}};
   GPIO_init(&capture_handler);
 }
 
@@ -192,22 +192,22 @@ void spi_setup_test() {
   // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
 
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
-  GPIOConfig_t default_gpio_cfg = {.GPIO_pin_mode = GPIO_MODE_ALTFN,
-                                   .GPIO_pin_speed = GPIO_SPEED_HIGH,
-                                   .GPIO_pin_pupd_control = GPIO_PUPDR_NONE,
-                                   .GPIO_pin_out_type = GPIO_OP_TYPE_PUSHPULL,
-                                   .GPIO_pin_alt_func_mode = 5};
+  GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
+                                   .speed = GPIO_SPEED_HIGH,
+                                   .float_resistor = GPIO_PUPDR_NONE,
+                                   .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                   .alt_func_num = 5};
 
-  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
-  spi_gpio_clk_handle.GPIO_pin_config.GPIO_pin_number = 5;
+  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
+  spi_gpio_clk_handle.cfg.pin_number = 5;
   GPIO_init(&spi_gpio_clk_handle);
 
-  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
-  spi_gpio_miso_handle.GPIO_pin_config.GPIO_pin_number = 6;
+  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
+  spi_gpio_miso_handle.cfg.pin_number = 6;
   GPIO_init(&spi_gpio_miso_handle);
 
-  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = GPIOA, .GPIO_pin_config = default_gpio_cfg};
-  spi_gpio_mosi_handle.GPIO_pin_config.GPIO_pin_number = 7;
+  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
+  spi_gpio_mosi_handle.cfg.pin_number = 7;
   GPIO_init(&spi_gpio_mosi_handle);
 
   // 2.Write to the SPI_CR1 register:

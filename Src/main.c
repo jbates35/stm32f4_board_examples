@@ -47,6 +47,11 @@
 #define PWM_GPIO_PIN 3
 #define PWM_GPIO_ALT_FN 1
 
+#define SPI_GPIO_PORT GPIOA
+#define SPI_GPIO_CLK_PIN 5
+#define SPI_GPIO_MISO_PIN 6
+#define SPI_GPIO_MOSI_PIN 7
+
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
 #define TIM_CHANNEL 1
@@ -59,12 +64,18 @@
 #define OUTPUT_COMPARE_CHAN_LO 2
 #define OUTPUT_COMPARE_CHAN_HI 3
 
+/****** SPI *********/
+#define SPI_PORT SPI1
+#define SPI_BAUD_RATE 0b100
+
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
 void setup_gpio();
 void setup_timers();
+
+void setup_spi_test();
 
 int main(void) {
   setup_gpio();
@@ -192,46 +203,58 @@ void spi_setup_test() {
   // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
 
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
+  GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
                                    .speed = GPIO_SPEED_HIGH,
                                    .float_resistor = GPIO_PUPDR_NONE,
                                    .output_type = GPIO_OP_TYPE_PUSHPULL,
                                    .alt_func_num = 5};
-
-  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
-  spi_gpio_clk_handle.cfg.pin_number = 5;
+  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_clk_handle.cfg.pin_number = SPI_GPIO_CLK_PIN;
   GPIO_init(&spi_gpio_clk_handle);
 
-  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
-  spi_gpio_miso_handle.cfg.pin_number = 6;
+  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_miso_handle.cfg.pin_number = SPI_GPIO_MISO_PIN;
   GPIO_init(&spi_gpio_miso_handle);
 
-  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = GPIOA, .cfg = default_gpio_cfg};
-  spi_gpio_mosi_handle.cfg.pin_number = 7;
+  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
   GPIO_init(&spi_gpio_mosi_handle);
 
   // 2.Write to the SPI_CR1 register:
-
   // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
+  // NOTE says: These bits should not be changed when communication is ongoing.
+  SPI_PORT->CR1 |= SPI_BAUD_RATE;
 
   // b) Configure the CPOL and CPHA bits combination to define one of the fou  relationships between the data transfer and the serial clock. (Note: 2 - except the  case when CRC is enabled at TI mode).
+  SPI_PORT->CR1 |= (0 << SPI_CR1_CPOL_Pos);
+  SPI_PORT->CR1 |= (0 << SPI_CR1_CPHA_Pos);
 
   // c) Select simplex or half-duplex mode by configuring RXONLY or BIDIMODE and BIDIOE (RXONLY and BIDIMODE can't be set at the same time).
+  SPI_PORT->CR1 |= (0 << SPI_CR1_BIDIMODE_Pos);
+  // BIDIOE is bidirectional output enable (output-only on the pin, as opposed to input-only)
 
   // d) Configure the LSBFIRST bit to define the frame format (Note: 2).
+  SPI_PORT->CR1 |= (0 << SPI_CR1_LSBFIRST_Pos);  // MSB first
 
   // e) Configure the CRCEN and CRCEN bits if CRC is needed (while SCK clock signal is at idle state
+  SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
 
   // f) Configure SSM and SSI (Note: 2).
+  SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
 
   // g) Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
+  SPI_PORT->CR1 |= (1 << SPI_CR1_MSTR_Pos);
 
   // h) Set the DFF bit to configure the data frame format (8 or 16 bits).
+  SPI_PORT->CR1 |= (0 << SPI_CR1_DFF_Pos);  // 8-bit DFFs
 
   // 3:Write to SPI_CR2 register:
   //    a) Configure SSOE (Note: 1 & 2).
+  SPI_PORT->CR2 |= (0 << SPI_CR2_SSOE_Pos);
 
   //    b) Set the FRF bit if the TI protocol is required.
+  SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
 
   // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
 

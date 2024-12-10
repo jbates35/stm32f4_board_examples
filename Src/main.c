@@ -48,6 +48,7 @@
 #define PWM_GPIO_ALT_FN 1
 
 #define SPI_GPIO_PORT GPIOA
+#define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
@@ -75,14 +76,19 @@
 void setup_gpio();
 void setup_timers();
 
-void setup_spi_test();
+void spi_setup_test();
 
 int main(void) {
-  setup_gpio();
-  setup_timers();
+  // setup_gpio();
+  // setup_timers();
+
+  spi_setup_test();
 
   /* Loop forever */
   for (;;) {
+    // Send SPI Tx
+
+    WAIT(SLOW);
   }
 }
 
@@ -202,6 +208,9 @@ void EXTI15_10_IRQHandler(void) {
 void spi_setup_test() {
   // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
 
+  // First enable RCC clock
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_SPI1EN_Pos);
+
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
   GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
@@ -221,10 +230,14 @@ void spi_setup_test() {
   spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
   GPIO_init(&spi_gpio_mosi_handle);
 
+  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
+  GPIO_init(&spi_gpio_nss_handle);
+
   // 2.Write to the SPI_CR1 register:
   // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
   // NOTE says: These bits should not be changed when communication is ongoing.
-  SPI_PORT->CR1 |= SPI_BAUD_RATE;
+  SPI_PORT->CR1 |= (SPI_BAUD_RATE << SPI_CR1_BR_Pos);
 
   // b) Configure the CPOL and CPHA bits combination to define one of the fou  relationships between the data transfer and the serial clock. (Note: 2 - except the  case when CRC is enabled at TI mode).
   SPI_PORT->CR1 |= (0 << SPI_CR1_CPOL_Pos);
@@ -241,17 +254,20 @@ void spi_setup_test() {
   SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
 
   // f) Configure SSM and SSI (Note: 2).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
+  SPI_PORT->CR1 |= (0 << SPI_CR1_SSM_Pos);
+  SPI_PORT->CR1 |= (0 << SPI_CR1_SSI_Pos);
 
   // g) Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
   SPI_PORT->CR1 |= (1 << SPI_CR1_MSTR_Pos);
+
+  // Ad hoc - turn software slave management on
 
   // h) Set the DFF bit to configure the data frame format (8 or 16 bits).
   SPI_PORT->CR1 |= (0 << SPI_CR1_DFF_Pos);  // 8-bit DFFs
 
   // 3:Write to SPI_CR2 register:
   //    a) Configure SSOE (Note: 1 & 2).
-  SPI_PORT->CR2 |= (0 << SPI_CR2_SSOE_Pos);
+  SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
 
   //    b) Set the FRF bit if the TI protocol is required.
   SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
@@ -259,4 +275,16 @@ void spi_setup_test() {
   // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
 
   // 5.Write proper DMA registers: Configure DMA streams dedicated for SPI Tx and Rx in DMA registers if the DMA streams are used.
+
+  // Lastly, enable the SPI peripheral
+  SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
+
+  // NOTES: Seems like I can only enable master mode when SSI and SSM are 1
+  // Otherwise, master gets forced to 0, and MODE FAULT turns to 1
+
+  // REASON: According to the manual, if NSS is pulled low, MODF is set and master mode is cleared
+  // Therefore it is recommended to have a pullup resistor if NSS pin is being used
+  // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
+
+  int asdf = 0;
 }

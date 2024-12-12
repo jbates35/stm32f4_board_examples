@@ -23,6 +23,8 @@
 #include "stm32f446xx_gpio.h"
 #include "stm32f446xx_tim.h"
 
+#define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
+
 #define FAST 100000
 #define MEDIUM 300000
 #define SLOW 1000000
@@ -67,7 +69,7 @@
 
 /****** SPI *********/
 #define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b100
+#define SPI_BAUD_RATE 0b010
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -84,10 +86,18 @@ int main(void) {
 
   spi_setup_test();
 
+  // Create string for SPI testing
+  char test_str[] = " WHO LET THE DOGS OUT";
+  int len = SIZEOF(test_str);
+
   /* Loop forever */
   for (;;) {
     // Send SPI Tx
-
+    for (int i = 0; i < len; i++) {
+      // While the TX Buffer is not empty...
+      while (!(SPI_PORT->SR & (1 << SPI_SR_TXE_Pos)));
+      SPI_PORT->DR = (uint8_t)test_str[i];
+    }
     WAIT(SLOW);
   }
 }
@@ -269,7 +279,7 @@ void spi_setup_test() {
   //    a) Configure SSOE (Note: 1 & 2).
   SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
 
-  //    b) Set the FRF bit if the TI protocol is required.
+  //    b) Set the FRF bit if the TI protocol is required. Motorola vs TI
   SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
 
   // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
@@ -285,6 +295,4 @@ void spi_setup_test() {
   // REASON: According to the manual, if NSS is pulled low, MODF is set and master mode is cleared
   // Therefore it is recommended to have a pullup resistor if NSS pin is being used
   // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
-
-  int asdf = 0;
 }

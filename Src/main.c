@@ -79,6 +79,7 @@ void setup_gpio();
 void setup_timers();
 
 void spi_setup_test();
+void spi_tx(SPI_TypeDef *spi_port, uint8_t *tx_buffer, uint16_t len);
 
 int main(void) {
   // setup_gpio();
@@ -87,17 +88,13 @@ int main(void) {
   spi_setup_test();
 
   // Create string for SPI testing
-  char test_str[] = " WHO LET THE DOGS OUT";
+  char test_str[] = " WHO LET THE DOwaejfoiwefjiT";
   int len = SIZEOF(test_str);
 
   /* Loop forever */
   for (;;) {
     // Send SPI Tx
-    for (int i = 0; i < len; i++) {
-      // While the TX Buffer is not empty...
-      while (!(SPI_PORT->SR & (1 << SPI_SR_TXE_Pos)));
-      SPI_PORT->DR = (uint8_t)test_str[i];
-    }
+    spi_tx(SPI_PORT, (uint8_t *)test_str, len);
     WAIT(SLOW);
   }
 }
@@ -295,4 +292,28 @@ void spi_setup_test() {
   // REASON: According to the manual, if NSS is pulled low, MODF is set and master mode is cleared
   // Therefore it is recommended to have a pullup resistor if NSS pin is being used
   // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
+}
+
+void spi_tx(SPI_TypeDef *spi_port, uint8_t *tx_buffer, uint16_t len) {
+  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
+  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
+
+  while (len > 0) {
+    // Get the next frame available
+    uint16_t tx_word = 0;
+    if (dff_bytes == 1)
+      tx_word = *((uint8_t *)tx_buffer);
+    else {
+      tx_word = *((uint16_t *)tx_buffer);
+      if (len == 1) tx_word &= 0xFF00;
+    }
+
+    // While the TX Buffer is not empty...
+    while (!(spi_port->SR & (1 << SPI_SR_TXE_Pos)));
+    spi_port->DR = tx_word;
+
+    // Move buffer along to the next available frame
+    tx_buffer += dff_bytes;
+    len -= dff_bytes;
+  }
 }

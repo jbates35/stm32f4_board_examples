@@ -79,7 +79,12 @@ void setup_gpio();
 void setup_timers();
 
 void spi_setup_test();
-void spi_tx(SPI_TypeDef *spi_port, uint8_t *tx_buffer, uint16_t len);
+
+int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
+int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
+
+int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
+int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 int main(void) {
   // setup_gpio();
@@ -94,7 +99,10 @@ int main(void) {
   /* Loop forever */
   for (;;) {
     // Send SPI Tx
-    spi_tx(SPI_PORT, (uint8_t *)test_str, len);
+    // spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
+    uint16_t rx_byte = 0;
+    while (spi_rx_byte(SPI_PORT, &rx_byte));
+    ITM_SendChar(rx_byte);
     WAIT(SLOW);
   }
 }
@@ -294,7 +302,19 @@ void spi_setup_test() {
   // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
 }
 
-void spi_tx(SPI_TypeDef *spi_port, uint8_t *tx_buffer, uint16_t len) {
+int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte) {
+  if (spi_port == NULL) return -1;
+
+  // While the TX Buffer is not empty...
+  while (!(spi_port->SR & (1 << SPI_SR_TXE_Pos)));
+  spi_port->DR = tx_byte;
+
+  return 0;
+}
+
+int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len) {
+  if (spi_port == NULL) return -1;
+
   // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
   uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
 
@@ -308,12 +328,45 @@ void spi_tx(SPI_TypeDef *spi_port, uint8_t *tx_buffer, uint16_t len) {
       if (len == 1) tx_word &= 0xFF00;
     }
 
-    // While the TX Buffer is not empty...
-    while (!(spi_port->SR & (1 << SPI_SR_TXE_Pos)));
-    spi_port->DR = tx_word;
+    // Send byte
+    int result = spi_tx_byte(spi_port, tx_word);
+    if (result != 0) return result;
 
     // Move buffer along to the next available frame
     tx_buffer += dff_bytes;
     len -= dff_bytes;
   }
+
+  return 0;
+}
+
+int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte) {
+  if (spi_port == NULL) return -1;
+  if (!(spi_port->SR & (1 << SPI_SR_RXNE))) return 1;
+  *rx_byte = spi_port->DR;
+  return 0;
+}
+
+int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
+  if (spi_port == NULL) return -1;
+
+  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
+  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
+
+  while (len > 0) {
+    uint16_t rx_byte = 0;
+    while (spi_rx_byte(spi_port, &rx_byte));
+
+    if (dff_bytes == 1)
+      *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
+    else {
+      *((uint16_t *)rx_buffer) = rx_byte;
+    }
+
+    // Move buffer along to the next available frame
+    rx_buffer += dff_bytes;
+    len -= dff_bytes;
+  }
+
+  return 0;
 }

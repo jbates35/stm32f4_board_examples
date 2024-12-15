@@ -99,9 +99,10 @@ int main(void) {
   /* Loop forever */
   for (;;) {
     // Send SPI Tx
-    // spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
     uint16_t rx_byte = 0;
-    while (spi_rx_byte(SPI_PORT, &rx_byte));
+    spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
+    while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
+    rx_byte = SPI_PORT->DR;
     ITM_SendChar(rx_byte);
     WAIT(SLOW);
   }

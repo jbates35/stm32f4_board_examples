@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "stm32f446xx.h"
+
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
@@ -74,4 +76,26 @@ void setup_gpio() {
                                           .float_resistor = GPIO_PUPDR_PULLDOWN,
                                           .alt_func_num = INPUT_CAPTURE_GPIO_ALT_FN}};
   GPIO_init(&capture_handler);
+}
+
+void adc_test_setup() {}
+
+void read_temperature_setup() {
+  // 3.Select ADC1_IN18 input channel.
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+}
+
+int read_temperature() {
+  // 6.Start the ADC conversion by setting the SWSTART bit (or by external trigger)
+
+  // 7.Read the resulting VSENSE data in the ADC data register
+
+  // 8.Calculate the temperature using the following formula:
+  // Temperature (in °C) = {(VSENSE - V25) / Avg_Slope} + 25
+
+  return 0;
 }

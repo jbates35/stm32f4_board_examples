@@ -60,3 +60,7 @@ int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
 int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
+
+void adc_test_setup();
+void read_temperature_setup();
+int read_temperature();

@@ -29,7 +29,11 @@
 
 int main(void) {
   /* Loop forever */
+  read_temperature_setup();
+
   for (;;) {
+    float temperature_val = read_temperature();
+    WAIT(SLOW);
   }
 }
 
@@ -80,22 +84,66 @@ void setup_gpio() {
 
 void adc_test_setup() {}
 
+void adc_test_cont_setup() {
+  // Single conversion mode
+  // In Single conversion mode the ADC does one conversion. This mode is started with the
+  // CONT bit at 0 by either:
+  // setting the SWSTART bit in the ADC_CR2 register (for a regular channel only)
+
+  // Once the conversion of the selected channel is complete:
+  // If a regular channel was converted:
+  // –The converted data are stored into the 16-bit ADC_DR register
+  // –The EOC (end of conversion) flag is set
+  // –An interrupt is generated if the EOCIE bit is set
+  // If an injected channel was converted:
+  // –The converted data are stored into the 16-bit ADC_JDR1 register
+  // –The JEOC (end of conversion injected) flag is set
+  // –An interrupt is generated if the JEOCIE bit is set
+  // Then the ADC stops.
+}
 void read_temperature_setup() {
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+
+  ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+  WAIT(FAST);
+
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0 << ADC_SQR1_L_Pos);
+
   // 3.Select ADC1_IN18 input channel.
+  ADC1->SQR3 |= (18 << ADC_SQR3_SQ1_Pos);
 
   // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
 
   // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
   ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+  WAIT(FAST);
 }
 
-int read_temperature() {
+float read_temperature() {
   // 6.Start the ADC conversion by setting the SWSTART bit (or by external trigger)
+  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
+
+  while (ADC1->SR & ADC_SR_EOC_Pos);
 
   // 7.Read the resulting VSENSE data in the ADC data register
+  uint32_t adc_val = ADC1->DR;
 
   // 8.Calculate the temperature using the following formula:
-  // Temperature (in °C) = {(VSENSE - V25) / Avg_Slope} + 25
+  return convert_adc_to_temperature(adc_val, 12);
+}
 
-  return 0;
+float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_res) {
+  // Temperature (in °C) = {(VSENSE - V25) / Avg_Slope} + 25
+  // Avg_Slope = 2.5mV/C
+  // THEREFORE:
+  // V_25 = 0.76 -> 0.76/3.3 * 4095 = 943
+  // Temp = (ADC_VAL / 4095 * 3.3 - 0.76)/0.0025
+  // Temp = (ADC_VAL * 0.0008058608 - 0.76) * 400 + 25
+  // Temp = (0.32234432234*ADC_VAL - 304) + 25
+  // Temp = 0.32234432234*(ADC_VAL - 943) + 25
+
+  return 0.32234432234 * (adc_val - 943) + 25;
 }

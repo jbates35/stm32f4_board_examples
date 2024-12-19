@@ -82,7 +82,57 @@ void setup_gpio() {
   GPIO_init(&capture_handler);
 }
 
-void adc_test_setup() {}
+void adc_gpio_setup() {
+  // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
+  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
+
+  GPIO_peri_clock_control(ADC_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc0_handler.cfg.pin_number = ADC_CHAN0_GPIO_PIN;
+  GPIO_init(&adc0_handler);
+
+  GPIO_peri_clock_control(ADC_CHAN1_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC_CHAN1_GPIO_PORT, .cfg = cfg};
+  adc1_handler.cfg.pin_number = ADC_CHAN1_GPIO_PIN;
+  GPIO_init(&adc1_handler);
+}
+
+void adc_test_single_setup() {
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+
+  // Set up ADC in single conversion mode and turn the ADC on
+  ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+  WAIT(FAST);
+
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+
+  // 3.Select ADC1_IN18 input channel.
+  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
+  ADC1->SQR3 |= (1 << ADC_SQR3_SQ2_Pos);
+  ADC1->SQR3 |= (18 << ADC_SQR3_SQ3_Pos);
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+  WAIT(FAST);
+}
+
+uint16_t adc_sample() {
+  // Start the conversion
+  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
+
+  // Wait until the end of the conversion
+  while (ADC1->SR & ADC_SR_EOC_Pos);
+
+  // Read and return the value
+  return ADC1->DR;
+}
 
 void adc_test_cont_setup() {
   // Single conversion mode

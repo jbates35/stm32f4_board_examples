@@ -34,6 +34,11 @@
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
 
+#define ADC_CHAN0_GPIO_PORT GPIOA
+#define ADC_CHAN0_GPIO_PIN 0
+
+#define ADC_CHAN1_GPIO_PORT GPIOA
+#define ADC_CHAN1_GPIO_PIN 1
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
 #define TIM_CHANNEL 1

@@ -30,9 +30,17 @@
 int main(void) {
   /* Loop forever */
   read_temperature_setup();
+  adc_gpio_setup();
+  adc_test_single_setup();
 
+  uint8_t channel_count = (ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111 + 1;
   for (;;) {
-    float temperature_val = read_temperature();
+    for (int i = 0; i < channel_count; i++) {
+      uint16_t placeholder = adc_sample();
+      WAIT(FAST);
+    }
+
+    // float temperature_val = read_temperature();
     WAIT(SLOW);
   }
 }

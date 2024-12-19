@@ -39,6 +39,7 @@
 
 #define ADC_CHAN1_GPIO_PORT GPIOA
 #define ADC_CHAN1_GPIO_PIN 1
+
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
 #define TIM_CHANNEL 1
@@ -66,11 +67,11 @@ int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
 int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
-void adc_test_setup();
 void adc_gpio_setup();
 void adc_test_single_setup();
 void adc_test_cont_setup();
 uint16_t adc_sample();
+
 void read_temperature_setup();
 float read_temperature();
-float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_res);
+float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width);

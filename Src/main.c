@@ -28,8 +28,6 @@
 #endif
 
 int main(void) {
-  /* Loop forever */
-  read_temperature_setup();
   adc_gpio_setup();
   adc_test_single_setup();
 
@@ -181,27 +179,21 @@ void read_temperature_setup() {
 }
 
 float read_temperature() {
-  // 6.Start the ADC conversion by setting the SWSTART bit (or by external trigger)
-  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
-
-  while (ADC1->SR & ADC_SR_EOC_Pos);
-
-  // 7.Read the resulting VSENSE data in the ADC data register
-  uint32_t adc_val = ADC1->DR;
-
-  // 8.Calculate the temperature using the following formula:
+  uint16_t adc_val = adc_sample();
   return convert_adc_to_temperature(adc_val, 12);
 }
 
-float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_res) {
+float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width) {
   // Temperature (in °C) = {(VSENSE - V25) / Avg_Slope} + 25
+  // V25 = 0.76
   // Avg_Slope = 2.5mV/C
-  // THEREFORE:
-  // V_25 = 0.76 -> 0.76/3.3 * 4095 = 943
-  // Temp = (ADC_VAL / 4095 * 3.3 - 0.76)/0.0025
-  // Temp = (ADC_VAL * 0.0008058608 - 0.76) * 400 + 25
-  // Temp = (0.32234432234*ADC_VAL - 304) + 25
-  // Temp = 0.32234432234*(ADC_VAL - 943) + 25
+  // Therefore temp = (ADC_VAL / 4095 * 3.3 - 0.76)/0.0025
 
-  return 0.32234432234 * (adc_val - 943) + 25;
+  // Use the bits per ADC sample to calculate the resolution
+  uint16_t adc_res = 1;
+  for (int i = 0; i < adc_bit_width; i++) adc_res *= 2;
+
+  // Find temperature in celsius
+  float v_sense = adc_val * 3.3 / adc_res;
+  return 400 * (v_sense - 0.76) + 25;
 }

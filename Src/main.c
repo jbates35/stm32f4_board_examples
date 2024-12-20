@@ -29,7 +29,7 @@
 
 int main(void) {
   adc_gpio_setup();
-  adc_test_single_setup();
+  adc_test_scan_setup();
 
   uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   for (;;) {
@@ -92,11 +92,13 @@ void adc_gpio_setup() {
   // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
   GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
 
+  // ADC 0
   GPIO_peri_clock_control(ADC_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC_CHAN0_GPIO_PORT, .cfg = cfg};
   adc0_handler.cfg.pin_number = ADC_CHAN0_GPIO_PIN;
   GPIO_init(&adc0_handler);
 
+  // ADC 1
   GPIO_peri_clock_control(ADC_CHAN1_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC_CHAN1_GPIO_PORT, .cfg = cfg};
   adc1_handler.cfg.pin_number = ADC_CHAN1_GPIO_PIN;
@@ -108,9 +110,8 @@ void adc_test_single_setup() {
 
   // Set up ADC in single conversion mode and turn the ADC on
   ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
-  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
-  WAIT(FAST);
 
+  // Select number of channels to sample
   ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
   ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
 
@@ -124,11 +125,49 @@ void adc_test_single_setup() {
   ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP1_Pos);
   ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
 
+  // Turn ADC on
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+
   // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
   ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+
   WAIT(FAST);
 }
 
+void adc_test_scan_setup() {
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+
+  // Set up ADC in single conversion
+  ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
+
+  // Set up ADC in scan mode
+  ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
+
+  // Ensure the EOC gets triggered after each conversion
+  ADC1->CR2 |= (1 << ADC_CR2_EOCS_Pos);
+
+  // Select number of channels to sample
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+
+  // 3.Select ADC1_IN18 input channel.
+  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
+  ADC1->SQR3 |= (1 << ADC_SQR3_SQ2_Pos);
+  ADC1->SQR3 |= (18 << ADC_SQR3_SQ3_Pos);
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
+
+  // Turn ADC on
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+
+  WAIT(FAST);
+}
 uint16_t adc_sample() {
   // Start the conversion
   ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
@@ -156,7 +195,11 @@ void adc_test_cont_setup() {
   // –The JEOC (end of conversion injected) flag is set
   // –An interrupt is generated if the JEOCIE bit is set
   // Then the ADC stops.
+
+  // NOTE: Try with the scan mode turned off first, then on
+  // Question then, does it sample just the first channel, or all the channels?
 }
+
 void read_temperature_setup() {
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
 

@@ -69,6 +69,7 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 void adc_gpio_setup();
 void adc_test_single_setup();
+void adc_test_scan_setup();
 void adc_test_cont_setup();
 uint16_t adc_sample();
 

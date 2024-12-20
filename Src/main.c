@@ -31,7 +31,7 @@ int main(void) {
   adc_gpio_setup();
   adc_test_single_setup();
 
-  uint8_t channel_count = (ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111 + 1;
+  uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   for (;;) {
     for (int i = 0; i < channel_count; i++) {
       uint16_t placeholder = adc_sample();

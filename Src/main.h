@@ -7,9 +7,9 @@
 #define FAST 100000
 #define MEDIUM 300000
 #define SLOW 1000000
-#define WAIT(CNT)                              \
-  do {                                         \
-    for (int def_i = 0; def_i < CNT; def_i++); \
+#define WAIT(CNT)                                          \
+  do {                                                     \
+    for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
 /******* PINS *********/
@@ -69,6 +69,7 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 void adc_gpio_setup();
 void adc_test_single_setup();
+void adc_test_disc_setup();
 void adc_test_scan_setup();
 void adc_test_cont_setup();
 uint16_t adc_sample();
@@ -76,3 +77,4 @@ uint16_t adc_sample();
 void read_temperature_setup();
 float read_temperature();
 float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width);
+void adc_interrupt_en(ADC_TypeDef *adc_addr);

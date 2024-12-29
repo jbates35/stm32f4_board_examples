@@ -175,7 +175,51 @@ void adc_test_disc_setup() {
 }
 
 void adc_test_scan_setup() {
+  // In this one, I believe we have to enable DMA mode, otherwise we simply cannot access any channel except the first one
+
+  // Enable DMA clock
+  RCC->AHB1ENR |= (1 << RCC_AHB1ENR_DMA2EN_Pos);
+
+  // Prep DMA for ADC
+  // Set channel 0 for stream 0 for ADC1
+  DMA2_Stream0->CR &= ~(0b111 << DMA_SxCR_CHSEL_Pos);
+  DMA2_Stream0->CR |= (0b000 << DMA_SxCR_CHSEL_Pos);
+
+  // Set priority level high
+  DMA2_Stream0->CR &= ~(0b11 << DMA_SxCR_PL_Pos);
+  DMA2_Stream0->CR |= (0b11 << DMA_SxCR_PL_Pos);
+
+  // Enable 12-bit ADC word size in DMA
+  DMA2_Stream0->CR &= ~(0b11 << DMA_SxCR_PSIZE_Pos);
+  DMA2_Stream0->CR |= (0b01 << DMA_SxCR_PSIZE_Pos);
+
+  // Set memory data size to 16-bit
+  DMA2_Stream0->CR &= ~(0b11 << DMA_SxCR_MSIZE_Pos);
+  DMA2_Stream0->CR |= (0b01 << DMA_SxCR_MSIZE_Pos);
+
+  // Peripheral increment needs to be turned off
+  DMA2_Stream0->CR &= ~(1 << DMA_SxCR_PINC_Pos);
+
+  // Memory increment needs to be turned on
+  DMA2_Stream0->CR |= (1 << DMA_SxCR_MINC_Pos);
+
+  // Assign the DMA peripheral address register to the ADC data register
+  DMA2_Stream0->PAR = (uint32_t)(uintptr_t)&ADC1->DR;
+
+  // Allow for enough words to be stored in the DMA buffer
+  DMA2_Stream0->NDTR = 16;
+
+  // Store the words in a buffer
+  DMA2_Stream0->M0AR = (uint32_t)(uintptr_t)adc_vals2;
+
+  // Turn on DMA
+  DMA2_Stream0->CR |= (1 << DMA_SxCR_EN_Pos);
+
+  // Enable RCC clock
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+
+  // Enable DMA mode
+  ADC1->CR2 |= (1 << ADC_CR2_DMA_Pos);
 
   // Set up ADC in single conversion
   ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);

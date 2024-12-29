@@ -27,20 +27,37 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
+uint16_t adc_vals[12] = {0, 0, 0};
+int adc_cnt = 0;
+
+uint16_t adc_vals2[16];
+
 int main(void) {
   adc_gpio_setup();
   adc_test_scan_setup();
 
-  uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
-  for (;;) {
-    for (int i = 0; i < channel_count; i++) {
-      uint16_t placeholder = adc_sample();
-      WAIT(FAST);
-    }
+  NVIC_EnableIRQ(ADC_IRQn);
+  adc_interrupt_en(ADC1);
 
-    // float temperature_val = read_temperature();
+  uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
+  WAIT(FAST);
+
+  for (;;) {
+    ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
+    // for (int i = 0; i < channel_count; i++) {
+    //   WAIT(FAST);
+    //   while ((ADC1->SR & ADC_SR_EOC_Pos));
+    // }
     WAIT(SLOW);
+    WAIT(SLOW);
+    ADC1->SR &= ~(1 << ADC_SR_OVR_Pos);
   }
+}
+
+void ADC_IRQHandler(void) {
+  ADC1->SR &= ~(1 << ADC_SR_EOC_Pos);
+  int asdf = 0;
+  adc_cnt++;
 }
 
 void setup_gpio() {
@@ -146,6 +163,8 @@ void adc_test_disc_setup() {
   ADC1->CR1 |= (1 << ADC_CR1_DISCEN_Pos);
   ADC1->CR1 &= ~(0x7 << ADC_CR1_DISCNUM_Pos);
   ADC1->CR1 |= (0 << ADC_CR1_DISCNUM_Pos);
+
+  // Enable scan mode to be able to sample all channels
   ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
 
   // Ensure the EOC gets triggered after each conversion
@@ -153,16 +172,18 @@ void adc_test_disc_setup() {
 
   // Select number of channels to sample
   ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
-  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b11 << ADC_SQR1_L_Pos);
 
   // 3.Select ADC1_IN18 input channel.
-  ADC1->SQR3 |= (18 << ADC_SQR3_SQ1_Pos);
+  ADC1->SQR3 |= (2 << ADC_SQR3_SQ1_Pos);
   ADC1->SQR3 |= (1 << ADC_SQR3_SQ2_Pos);
   ADC1->SQR3 |= (0 << ADC_SQR3_SQ3_Pos);
+  ADC1->SQR3 |= (18 << ADC_SQR3_SQ4_Pos);
 
   // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
   ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP0_Pos);
   ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
   ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
 
   // Turn ADC on
@@ -240,9 +261,9 @@ void adc_test_scan_setup() {
   ADC1->SQR3 |= (18 << ADC_SQR3_SQ3_Pos);
 
   // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
-  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP0_Pos);
-  ADC1->SMPR2 |= (0b111 << ADC_SMPR2_SMP1_Pos);
-  ADC1->SMPR1 |= (0b111 << ADC_SMPR1_SMP18_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR1 |= (0b010 << ADC_SMPR1_SMP18_Pos);
 
   // Turn ADC on
   ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
@@ -252,12 +273,15 @@ void adc_test_scan_setup() {
 
   WAIT(FAST);
 }
+
 uint16_t adc_sample() {
   // Start the conversion
   ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
 
   // Wait until the end of the conversion
-  while (ADC1->SR & ADC_SR_EOC_Pos);
+  while (!(ADC1->SR & ADC_SR_EOC_Pos));
+
+  ADC1->SR &= ~(1 << ADC_SR_EOC_Pos);
 
   // Read and return the value
   return ADC1->DR;
@@ -324,3 +348,5 @@ float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width) {
   float v_sense = adc_val * 3.3 / adc_res;
   return 400 * (v_sense - 0.76) + 25;
 }
+
+void adc_interrupt_en(ADC_TypeDef* adc_addr) { adc_addr->CR1 |= (1 << ADC_CR1_EOCIE_Pos); }

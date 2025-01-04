@@ -33,12 +33,23 @@ int adc_cnt = 0;
 
 uint16_t adc_vals2[16];
 
+uint16_t dma_arr_1[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+uint16_t dma_arr_2[10];
+void dma_test();
+
 int main(void) {
   adc_gpio_setup();
   adc_test_scan_setup();
 
   NVIC_EnableIRQ(ADC_IRQn);
   adc_interrupt_en(ADC1);
+
+  dma_test();
+  WAIT(MEDIUM);
+  dma_arr_1[0] = 10;
+  WAIT(MEDIUM);
+  dma_arr_1[9] = 19;
+  WAIT(MEDIUM);
 
   uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   WAIT(FAST);
@@ -368,3 +379,21 @@ float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width) {
 }
 
 void adc_interrupt_en(ADC_TypeDef* adc_addr) { adc_addr->CR1 |= (1 << ADC_CR1_EOCIE_Pos); }
+
+void dma_test() {
+  dma_peri_clock_control(DMA2, 1);
+  DMAHandle_t adc_dma_handle = {
+      .cfg =
+          {
+              .in = {.addr = (uintptr_t)dma_arr_1, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .out = {.addr = (uintptr_t)dma_arr_2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .mem_data_size = DMA_DATA_SIZE_16_BIT,
+              .peri_data_size = DMA_DATA_SIZE_16_BIT,
+              .dma_elements = 10,
+              .priority = DMA_PRIORITY_HIGH,
+              .circ_buffer = DMA_BUFFER_CIRCULAR,
+
+          },
+      .p_stream_addr = DMA2_Stream1};
+  dma_stream_init(&adc_dma_handle);
+}

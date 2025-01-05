@@ -54,18 +54,15 @@ void dma_adc_setup() {
   //
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t adc_dma_handle = {
-      .cfg =
-          {
-              .in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
-              .out = {.addr = (uintptr_t)&adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+      .cfg = {.in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .mem_data_size = DMA_DATA_SIZE_16_BIT,
               .peri_data_size = DMA_DATA_SIZE_16_BIT,
               .dma_elements = 3,
               .channel = 0b000,
               .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_CIRCULAR,
-
-          },
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
       .p_stream_addr = DMA2_Stream0};
   dma_stream_init(&adc_dma_handle);
 }

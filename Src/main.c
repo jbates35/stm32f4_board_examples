@@ -28,10 +28,9 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-uint16_t adc_vals[12] = {0, 0, 0};
 int adc_cnt = 0;
 
-uint16_t adc_vals2[16];
+uint16_t adc_vals2[3];
 void dma_adc_setup();
 
 int main(void) {
@@ -46,13 +45,8 @@ int main(void) {
 
   for (;;) {
     ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
-    // for (int i = 0; i < channel_count; i++) {
-    //   WAIT(FAST);
-    //   while ((ADC1->SR & ADC_SR_EOC_Pos));
-    // }
     WAIT(SLOW);
-    WAIT(SLOW);
-    ADC1->SR &= ~(1 << ADC_SR_OVR_Pos);
+    int asdf = 0;
   }
 }
 
@@ -198,13 +192,14 @@ void adc_test_disc_setup() {
 }
 
 void adc_test_scan_setup() {
-  dma_adc_setup();
-
   // Enable RCC clock
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
 
+  dma_adc_setup();
+
   // Enable DMA mode
   ADC1->CR2 |= (1 << ADC_CR2_DMA_Pos);
+  ADC1->CR2 |= (1 << ADC_CR2_DDS_Pos);
 
   // Set up ADC in single conversion
   ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
@@ -213,7 +208,7 @@ void adc_test_scan_setup() {
   ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
 
   // Ensure the EOC gets triggered after each conversion
-  ADC1->CR2 |= (1 << ADC_CR2_EOCS_Pos);
+  ADC1->CR2 &= ~(1 << ADC_CR2_EOCS_Pos);
 
   // Select number of channels to sample
   ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
@@ -318,18 +313,15 @@ void adc_interrupt_en(ADC_TypeDef* adc_addr) { adc_addr->CR1 |= (1 << ADC_CR1_EO
 void dma_adc_setup() {
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t adc_dma_handle = {
-      .cfg =
-          {
-              .in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
-              .out = {.addr = (uintptr_t)&adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+      .cfg = {.in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .mem_data_size = DMA_DATA_SIZE_16_BIT,
               .peri_data_size = DMA_DATA_SIZE_16_BIT,
               .dma_elements = 3,
               .channel = 0b000,
               .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_CIRCULAR,
-
-          },
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
       .p_stream_addr = DMA2_Stream0};
   dma_stream_init(&adc_dma_handle);
 }

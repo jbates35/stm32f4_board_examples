@@ -35,16 +35,16 @@ void dma_adc_setup();
 
 int main(void) {
   adc_gpio_setup();
-  adc_test_scan_setup();
+  adc_test_cont_setup();
 
   NVIC_EnableIRQ(ADC_IRQn);
   adc_interrupt_en(ADC1);
 
   uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   WAIT(FAST);
+  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
 
   for (;;) {
-    ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
     WAIT(SLOW);
     int asdf = 0;
   }
@@ -224,6 +224,10 @@ void adc_test_scan_setup() {
   ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
   ADC1->SMPR1 |= (0b010 << ADC_SMPR1_SMP18_Pos);
 
+  // TRY INJECTED CHANNELS /////////
+
+  // END INJECTED CHANNELS ///////
+
   // Turn ADC on
   ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
 
@@ -264,6 +268,49 @@ void adc_test_cont_setup() {
   // Then the ADC stops.
 
   // NOTE: Try with the scan mode turned off first, then on
+  // Enable RCC clock
+
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+
+  dma_adc_setup();
+
+  // Enable DMA mode
+  ADC1->CR2 |= (1 << ADC_CR2_DMA_Pos) | (1 << ADC_CR2_DDS_Pos);
+
+  // Enable continuous mode
+  ADC1->CR2 |= (1 << ADC_CR2_CONT_Pos);
+
+  // Set up ADC in scan mode
+  // ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
+
+  // Ensure the EOC gets triggered after each conversion
+  ADC1->CR2 &= ~(1 << ADC_CR2_EOCS_Pos);
+
+  // Select number of channels to sample
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+
+  // 3.Select ADC1_IN18 input channel.
+  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
+  ADC1->SQR3 |= (1 << ADC_SQR3_SQ2_Pos);
+  ADC1->SQR3 |= (18 << ADC_SQR3_SQ3_Pos);
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR1 |= (0b010 << ADC_SMPR1_SMP18_Pos);
+
+  // TRY INJECTED CHANNELS /////////
+
+  // END INJECTED CHANNELS ///////
+
+  // Turn ADC on
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+
+  WAIT(FAST);
   // Question then, does it sample just the first channel, or all the channels?
 }
 
@@ -325,3 +372,11 @@ void dma_adc_setup() {
       .p_stream_addr = DMA2_Stream0};
   dma_stream_init(&adc_dma_handle);
 }
+
+// Thigns needed for ADC
+// - Dual channel mode
+// - Injected channels
+// - Calibration
+// - Temperature sense
+// - Single sample mode, multi-channel
+// - Manual sample, auto sample

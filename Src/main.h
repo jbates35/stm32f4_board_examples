@@ -34,11 +34,14 @@
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
 
-#define ADC_CHAN0_GPIO_PORT GPIOA
-#define ADC_CHAN0_GPIO_PIN 0
+#define ADC1_CHAN0_GPIO_PORT GPIOA
+#define ADC1_CHAN0_GPIO_PIN 0
 
-#define ADC_CHAN1_GPIO_PORT GPIOA
-#define ADC_CHAN1_GPIO_PIN 1
+#define ADC1_CHAN1_GPIO_PORT GPIOA
+#define ADC1_CHAN1_GPIO_PIN 1
+
+#define ADC2_CHAN0_GPIO_PORT GPIOA
+#define ADC2_CHAN0_GPIO_PIN 0
 
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5
@@ -72,8 +75,12 @@ void adc_test_single_setup();
 void adc_test_disc_setup();
 void adc_test_scan_setup();
 void adc_test_cont_setup();
+void adc_dual_gpio_setup();
+void adc_dual_channel_setup();
 uint16_t adc_sample();
 
+void dma_adc_setup();
+void dma_adc_dual_setup();
 void read_temperature_setup();
 float read_temperature();
 float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width);

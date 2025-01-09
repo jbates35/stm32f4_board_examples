@@ -31,11 +31,10 @@
 int adc_cnt = 0;
 
 uint16_t adc_vals2[3];
-void dma_adc_setup();
 
 int main(void) {
-  adc_gpio_setup();
-  adc_test_cont_setup();
+  adc_dual_gpio_setup();
+  adc_dual_channel_setup();
 
   NVIC_EnableIRQ(ADC_IRQn);
   adc_interrupt_en(ADC1);
@@ -106,15 +105,15 @@ void adc_gpio_setup() {
   GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
 
   // ADC 0
-  GPIO_peri_clock_control(ADC_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC_CHAN0_GPIO_PORT, .cfg = cfg};
-  adc0_handler.cfg.pin_number = ADC_CHAN0_GPIO_PIN;
+  GPIO_peri_clock_control(ADC1_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC1_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc0_handler.cfg.pin_number = ADC1_CHAN0_GPIO_PIN;
   GPIO_init(&adc0_handler);
 
   // ADC 1
-  GPIO_peri_clock_control(ADC_CHAN1_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC_CHAN1_GPIO_PORT, .cfg = cfg};
-  adc1_handler.cfg.pin_number = ADC_CHAN1_GPIO_PIN;
+  GPIO_peri_clock_control(ADC1_CHAN1_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC1_CHAN1_GPIO_PORT, .cfg = cfg};
+  adc1_handler.cfg.pin_number = ADC1_CHAN1_GPIO_PIN;
   GPIO_init(&adc1_handler);
 }
 
@@ -314,6 +313,71 @@ void adc_test_cont_setup() {
   // Question then, does it sample just the first channel, or all the channels?
 }
 
+void adc_dual_gpio_setup() {
+  // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
+  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
+
+  // ADC1 chan0
+  GPIO_peri_clock_control(ADC1_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC1_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc0_handler.cfg.pin_number = ADC1_CHAN0_GPIO_PIN;
+  GPIO_init(&adc0_handler);
+
+  // ADC2 chan0
+  GPIO_peri_clock_control(ADC2_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC2_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc1_handler.cfg.pin_number = ADC2_CHAN0_GPIO_PIN;
+  GPIO_init(&adc1_handler);
+}
+void adc_dual_channel_setup() {
+  void dma_adc_dual_setup();
+
+  // Enable RCC clock
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC2EN_Pos);
+
+  ADC1->CR1 = 0;
+  ADC1->CR2 = 0;
+  ADC2->CR1 = 0;
+  ADC2->CR2 = 0;
+
+  ADC->CCR = 0;
+  ADC->CCR |= (0b01 << ADC_CCR_DMA_Pos) | (1 << ADC_CCR_DDS_Pos);
+  ADC->CCR |= (0b00110 << ADC_CCR_MULTI_Pos);
+
+  // Set up ADC in scan mode
+  ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
+
+  // Ensure the EOC gets triggered after each conversion
+  ADC1->CR2 &= ~(1 << ADC_CR2_EOCS_Pos);
+  ADC1->CR2 |= (1 << ADC_CR1_EOCIE_Pos);
+
+  // Select number of channels to sample
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b01 << ADC_SQR1_L_Pos);
+
+  // Select number of channels to sample
+  ADC2->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC2->SQR1 |= (0b01 << ADC_SQR1_L_Pos);
+
+  // 3.Select ADC1_IN18 input channel.
+  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
+  ADC2->SQR3 |= (1 << ADC_SQR3_SQ1_Pos);
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC2->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+
+  // Turn ADC on
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+  ADC2->CR2 |= (1 << ADC_CR2_ADON_Pos);
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+
+  WAIT(FAST);
+}
+
 void read_temperature_setup() {
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
 
@@ -364,6 +428,22 @@ void dma_adc_setup() {
               .out = {.addr = (uintptr_t)adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .mem_data_size = DMA_DATA_SIZE_16_BIT,
               .peri_data_size = DMA_DATA_SIZE_16_BIT,
+              .dma_elements = 3,
+              .channel = 0b000,
+              .priority = DMA_PRIORITY_MAX,
+              .circ_buffer = DMA_BUFFER_CIRCULAR,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
+      .p_stream_addr = DMA2_Stream0};
+  dma_stream_init(&adc_dma_handle);
+}
+
+void dma_adc_dual_setup() {
+  dma_peri_clock_control(DMA2, 1);
+  DMAHandle_t adc_dma_handle = {
+      .cfg = {.in = {.addr = (uintptr_t)&ADC->CDR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .mem_data_size = DMA_DATA_SIZE_32_BIT,
+              .peri_data_size = DMA_DATA_SIZE_32_BIT,
               .dma_elements = 3,
               .channel = 0b000,
               .priority = DMA_PRIORITY_MAX,

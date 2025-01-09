@@ -312,6 +312,12 @@ void adc_test_cont_setup() {
   WAIT(FAST);
   // Question then, does it sample just the first channel, or all the channels?
 }
+void adc_test_injected_setup() {
+  // NOTE: with JSQL, it starts, say if JL is 3, from 2->4. Not 1->3.
+  adc_test_scan_setup();
+  ADC1->JSQR |=
+      (0b10 << ADC_JSQR_JL_Pos) | (18 << ADC_JSQR_JSQ4_Pos) | (1 << ADC_JSQR_JSQ3_Pos) | (0 << ADC_JSQR_JSQ2_Pos);
+}
 
 void adc_dual_gpio_setup() {
   // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1

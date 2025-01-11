@@ -31,6 +31,7 @@
 int adc_cnt = 0;
 
 uint16_t adc_vals2[3];
+uint32_t adc_vals_dual[16];
 
 int main(void) {
   adc_dual_gpio_setup();
@@ -447,10 +448,10 @@ void dma_adc_dual_setup() {
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t adc_dma_handle = {
       .cfg = {.in = {.addr = (uintptr_t)&ADC->CDR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
-              .out = {.addr = (uintptr_t)adc_vals2, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .out = {.addr = (uintptr_t)adc_vals_dual, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .mem_data_size = DMA_DATA_SIZE_32_BIT,
               .peri_data_size = DMA_DATA_SIZE_32_BIT,
-              .dma_elements = 3,
+              .dma_elements = 16,
               .channel = 0b000,
               .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_CIRCULAR,

@@ -30,21 +30,26 @@
 
 int adc_cnt = 0;
 
-uint16_t adc_vals2[3];
-uint32_t adc_vals_dual[16];
+volatile uint16_t adc_vals2[3];
+volatile uint32_t adc_vals_dual[16];
 
 int main(void) {
+  adc_vals_dual[0] = 4;
+
   adc_dual_gpio_setup();
   adc_dual_channel_setup();
+
+  // adc_gpio_setup();
+  // adc_test_scan_setup();
 
   NVIC_EnableIRQ(ADC_IRQn);
   adc_interrupt_en(ADC1);
 
   uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   WAIT(FAST);
-  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
 
   for (;;) {
+    ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
     WAIT(SLOW);
     int asdf = 0;
   }
@@ -322,7 +327,7 @@ void adc_test_injected_setup() {
 
 void adc_dual_gpio_setup() {
   // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
-  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
+  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_HIGH, .float_resistor = GPIO_PUPDR_NONE};
 
   // ADC1 chan0
   GPIO_peri_clock_control(ADC1_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
@@ -335,13 +340,19 @@ void adc_dual_gpio_setup() {
   GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC2_CHAN0_GPIO_PORT, .cfg = cfg};
   adc1_handler.cfg.pin_number = ADC2_CHAN0_GPIO_PIN;
   GPIO_init(&adc1_handler);
+
+  // // ADC1 chan2
+  // GPIO_peri_clock_control(ADC1_CHAN2_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  // GPIOHandle_t adc0chan2_handler = {.p_GPIO_addr = ADC1_CHAN2_GPIO_PORT, .cfg = cfg};
+  // adc0chan2_handler.cfg.pin_number = ADC1_CHAN2_GPIO_PIN;
+  // GPIO_init(&adc0chan2_handler);
 }
 void adc_dual_channel_setup() {
-  void dma_adc_dual_setup();
-
   // Enable RCC clock
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
   RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC2EN_Pos);
+
+  dma_adc_dual_setup();
 
   ADC1->CR1 = 0;
   ADC1->CR2 = 0;
@@ -349,8 +360,9 @@ void adc_dual_channel_setup() {
   ADC2->CR2 = 0;
 
   ADC->CCR = 0;
-  ADC->CCR |= (0b01 << ADC_CCR_DMA_Pos) | (1 << ADC_CCR_DDS_Pos);
+  ADC->CCR |= (0b10 << ADC_CCR_DMA_Pos) | (1 << ADC_CCR_DDS_Pos);
   ADC->CCR |= (0b00110 << ADC_CCR_MULTI_Pos);
+  // ADC->CCR |= (0b11 << ADC_CCR_ADCPRE_Pos);
 
   // Set up ADC in scan mode
   ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
@@ -361,18 +373,21 @@ void adc_dual_channel_setup() {
 
   // Select number of channels to sample
   ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
-  ADC1->SQR1 |= (0b01 << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b00 << ADC_SQR1_L_Pos);
 
   // Select number of channels to sample
   ADC2->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
   ADC2->SQR1 |= (0b01 << ADC_SQR1_L_Pos);
 
-  // 3.Select ADC1_IN18 input channel.
   ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
   ADC2->SQR3 |= (1 << ADC_SQR3_SQ1_Pos);
 
+
   // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
   ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP2_Pos);
+  ADC2->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
   ADC2->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
 
   // Turn ADC on

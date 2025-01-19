@@ -41,7 +41,7 @@
 #define ADC1_CHAN1_GPIO_PIN 1
 
 #define ADC2_CHAN0_GPIO_PORT GPIOA
-#define ADC2_CHAN0_GPIO_PIN 0
+#define ADC2_CHAN0_GPIO_PIN 1
 
 /******* TIMERS ********/
 #define TIM_TIMER_ADDR TIM5

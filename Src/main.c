@@ -22,6 +22,7 @@
 #include <stdio.h>
 
 #include "stm32f446xx.h"
+#include "stm32f446xx_adc.h"
 #include "stm32f446xx_dma.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
@@ -121,6 +122,19 @@ void adc_gpio_setup() {
   GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC1_CHAN1_GPIO_PORT, .cfg = cfg};
   adc1_handler.cfg.pin_number = ADC1_CHAN1_GPIO_PIN;
   GPIO_init(&adc1_handler);
+}
+
+void adc_driver_single_setup() {
+  ADCHandle_t adc_init_struct = {.addr = ADC1,
+                                 .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+                                         .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+                                         .interrupt_en = ADC_INTERRUPT_DISABLE,
+                                         .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
+                                         .main_seq_chan_cfg.en = ADC_SCAN_DISABLE,
+                                         .resolution = ADC_RESOLUTION_12_BIT,
+                                         .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
+  adc_peri_clock_control(ADC1, 1);
+  adc_stream_init(&adc_init_struct);
 }
 
 void adc_test_single_setup() {

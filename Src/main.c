@@ -387,15 +387,14 @@ void adc_dual_channel_setup() {
 
   // Select number of channels to sample
   ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
-  ADC1->SQR1 |= (0b00 << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
 
   // Select number of channels to sample
   ADC2->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
-  ADC2->SQR1 |= (0b01 << ADC_SQR1_L_Pos);
+  ADC2->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
 
   ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
   ADC2->SQR3 |= (1 << ADC_SQR3_SQ1_Pos);
-
 
   // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
   ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);

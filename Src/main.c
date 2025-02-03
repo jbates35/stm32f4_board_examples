@@ -439,21 +439,6 @@ float read_temperature() {
   return convert_adc_to_temperature(adc_val, 12);
 }
 
-float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width) {
-  // Temperature (in °C) = {(VSENSE - V25) / Avg_Slope} + 25
-  // V25 = 0.76
-  // Avg_Slope = 2.5mV/C
-  // Therefore temp = (ADC_VAL / 4095 * 3.3 - 0.76)/0.0025
-
-  // Use the bits per ADC sample to calculate the resolution
-  uint16_t adc_res = 1;
-  for (int i = 0; i < adc_bit_width; i++) adc_res *= 2;
-
-  // Find temperature in celsius
-  float v_sense = adc_val * 3.3 / adc_res;
-  return 400 * (v_sense - 0.76) + 25;
-}
-
 void adc_interrupt_en(ADC_TypeDef* adc_addr) { adc_addr->CR1 |= (1 << ADC_CR1_EOCIE_Pos); }
 
 void dma_adc_setup() {

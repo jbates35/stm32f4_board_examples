@@ -37,30 +37,30 @@ volatile uint32_t adc_vals_dual[16];
 int main(void) {
   adc_vals_dual[0] = 4;
 
-  adc_dual_gpio_setup();
-  adc_dual_channel_setup();
-
-  // adc_gpio_setup();
+  adc_gpio_setup();
   // adc_test_scan_setup();
 
-  NVIC_EnableIRQ(ADC_IRQn);
-  adc_interrupt_en(ADC1);
+  adc_driver_single_setup();
+
+  // NVIC_EnableIRQ(ADC_IRQn);
+  // adc_interrupt_en(ADC1);
 
   uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
   WAIT(FAST);
 
   for (;;) {
-    ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
+    uint16_t val1 = adc_single_sample(ADC1, 0, 0, 1);
     WAIT(SLOW);
-    int asdf = 0;
+    uint16_t val2 = adc_single_sample(ADC1, 1, 0, 1);
+    WAIT(SLOW);
   }
 }
 
-void ADC_IRQHandler(void) {
-  ADC1->SR &= ~(1 << ADC_SR_EOC_Pos);
-  int asdf = 0;
-  adc_cnt++;
-}
+// void ADC_IRQHandler(void) {
+//   ADC1->SR &= ~(1 << ADC_SR_EOC_Pos);
+//   int asdf = 0;
+//   adc_cnt++;
+// }
 
 void setup_gpio() {
   // Green LED for PA5 (on nucleo board)
@@ -134,7 +134,7 @@ void adc_driver_single_setup() {
                                          .resolution = ADC_RESOLUTION_12_BIT,
                                          .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
   adc_peri_clock_control(ADC1, 1);
-  adc_stream_init(&adc_init_struct);
+  adc_init(&adc_init_struct);
 }
 
 void adc_test_single_setup() {
@@ -332,6 +332,7 @@ void adc_test_cont_setup() {
   WAIT(FAST);
   // Question then, does it sample just the first channel, or all the channels?
 }
+
 void adc_test_injected_setup() {
   // NOTE: with JSQL, it starts, say if JL is 3, from 2->4. Not 1->3.
   adc_test_scan_setup();

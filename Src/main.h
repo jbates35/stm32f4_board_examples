@@ -79,6 +79,8 @@ void adc_dual_gpio_setup();
 void adc_dual_channel_setup();
 uint16_t adc_sample();
 
+void adc_driver_single_setup();
+
 void dma_adc_setup();
 void dma_adc_dual_setup();
 void read_temperature_setup();

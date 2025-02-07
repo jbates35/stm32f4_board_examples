@@ -53,6 +53,8 @@ int main(void) {
     WAIT(SLOW);
     uint16_t val2 = adc_single_sample(ADC1, 1, 0, 1);
     WAIT(SLOW);
+    uint16_t val3 = adc_single_sample(ADC1, 18, 0, 1);
+    WAIT(SLOW);
   }
 }
 
@@ -131,6 +133,7 @@ void adc_driver_single_setup() {
                                          .interrupt_en = ADC_INTERRUPT_DISABLE,
                                          .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
                                          .main_seq_chan_cfg.en = ADC_SCAN_DISABLE,
+                                         .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
                                          .resolution = ADC_RESOLUTION_12_BIT,
                                          .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
   adc_peri_clock_control(ADC1, 1);

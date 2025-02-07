@@ -186,19 +186,6 @@ void adc_test_scan_setup() {
   WAIT(FAST);
 }
 
-uint16_t adc_sample() {
-  // Start the conversion
-  ADC1->CR2 |= (1 << ADC_CR2_SWSTART_Pos);
-
-  // Wait until the end of the conversion
-  while (!(ADC1->SR & ADC_SR_EOC_Pos));
-
-  ADC1->SR &= ~(1 << ADC_SR_EOC_Pos);
-
-  // Read and return the value
-  return ADC1->DR;
-}
-
 void adc_test_cont_setup() {
   // Single conversion mode
   // In Single conversion mode the ADC does one conversion. This mode is started with the

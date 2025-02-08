@@ -37,24 +37,21 @@ volatile uint32_t adc_vals_dual[16];
 int main(void) {
   adc_vals_dual[0] = 4;
 
-  adc_gpio_setup();
-  // adc_test_scan_setup();
+  uint16_t adc_arr[3];
 
-  adc_driver_single_setup();
+  adc_gpio_setup();
+
+  // adc_driver_single_setup();
+  adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
 
   // NVIC_EnableIRQ(ADC_IRQn);
   // adc_interrupt_en(ADC1);
 
-  uint8_t channel_count = ((ADC1->SQR1 >> ADC_SQR1_L_Pos) & 0b1111) + 1;
-  WAIT(FAST);
-
   for (;;) {
-    uint16_t val1 = adc_single_sample(ADC1, 0, 0, 1);
+    adc_scan_sample(ADC1, ADC_NON_BLOCKING);
+
     WAIT(SLOW);
-    uint16_t val2 = adc_single_sample(ADC1, 1, 0, 1);
-    WAIT(SLOW);
-    uint16_t val3 = adc_single_sample(ADC1, 18, 0, 1);
-    WAIT(SLOW);
+    int asdf = 0;
   }
 }
 
@@ -137,6 +134,42 @@ void adc_driver_single_setup() {
                                          .resolution = ADC_RESOLUTION_12_BIT,
                                          .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
   adc_peri_clock_control(ADC1, 1);
+  adc_init(&adc_init_struct);
+}
+
+void adc_driver_scan_setup(uint16_t* out_arr, const uint8_t arr_len) {
+  DMAHandle_t adc_dma_handle = {
+      .cfg = {.in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)out_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .mem_data_size = DMA_DATA_SIZE_16_BIT,
+              .peri_data_size = DMA_DATA_SIZE_16_BIT,
+              .dma_elements = arr_len,
+              .channel = 0b001,
+              .priority = DMA_PRIORITY_MAX,
+              .circ_buffer = DMA_BUFFER_CIRCULAR,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
+      .p_stream_addr = DMA2_Stream0};
+  dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
+  dma_stream_init(&adc_dma_handle);
+
+  ADCHandle_t adc_init_struct = {
+      .addr = ADC1,
+      .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+              .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+              .interrupt_en = ADC_INTERRUPT_DISABLE,
+              .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
+
+                                    },
+                                    .sequence_length = 3},
+              .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
+              .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
+              .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+              .resolution = ADC_RESOLUTION_12_BIT,
+              .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
+  adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
   adc_init(&adc_init_struct);
 }
 
@@ -350,11 +383,6 @@ void read_temperature_setup() {
   // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
   ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
   WAIT(FAST);
-}
-
-float read_temperature() {
-  uint16_t adc_val = adc_sample();
-  return convert_adc_to_temperature(adc_val, 12);
 }
 
 void adc_interrupt_en(ADC_TypeDef* adc_addr) { adc_addr->CR1 |= (1 << ADC_CR1_EOCIE_Pos); }

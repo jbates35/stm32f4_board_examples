@@ -77,9 +77,9 @@ void adc_test_scan_setup();
 void adc_test_cont_setup();
 void adc_dual_gpio_setup();
 void adc_dual_channel_setup();
-uint16_t adc_sample();
 
 void adc_driver_single_setup();
+void adc_driver_scan_setup(uint16_t *out_arr, const uint8_t arr_len);
 
 void dma_adc_setup();
 void dma_adc_dual_setup();

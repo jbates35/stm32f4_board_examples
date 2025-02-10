@@ -41,17 +41,24 @@ int main(void) {
 
   adc_gpio_setup();
 
-  // adc_driver_single_setup();
-  adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
+  adc_driver_single_setup();
+  // adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
 
   // NVIC_EnableIRQ(ADC_IRQn);
   // adc_interrupt_en(ADC1);
 
   for (;;) {
-    adc_scan_sample(ADC1, ADC_NON_BLOCKING);
+    // adc_scan_sample(ADC1, ADC_NON_BLOCKING);
+    //
+    // WAIT(SLOW);
+    // int asdf = 0;
 
+    uint16_t val1 = adc_single_sample(ADC1, 0, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
     WAIT(SLOW);
-    int asdf = 0;
+    uint16_t val2 = adc_single_sample(ADC1, 1, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
+    WAIT(SLOW);
+    uint16_t val3 = adc_single_sample(ADC1, 18, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
+    WAIT(SLOW);
   }
 }
 

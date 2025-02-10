@@ -41,24 +41,21 @@ int main(void) {
 
   adc_gpio_setup();
 
-  adc_driver_single_setup();
-  // adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
+  // adc_driver_single_setup();
+  adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
 
   // NVIC_EnableIRQ(ADC_IRQn);
   // adc_interrupt_en(ADC1);
 
   for (;;) {
-    // adc_scan_sample(ADC1, ADC_NON_BLOCKING);
-    //
-    // WAIT(SLOW);
+    adc_scan_sample(ADC1, ADC_NON_BLOCKING);
+    WAIT(MEDIUM);
     // int asdf = 0;
 
-    uint16_t val1 = adc_single_sample(ADC1, 0, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
-    WAIT(SLOW);
-    uint16_t val2 = adc_single_sample(ADC1, 1, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
-    WAIT(SLOW);
-    uint16_t val3 = adc_single_sample(ADC1, 18, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
-    WAIT(SLOW);
+    // uint16_t val1 = adc_single_sample(ADC1, 0, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
+    // uint16_t val2 = adc_single_sample(ADC1, 1, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
+    // uint16_t val3 = adc_single_sample(ADC1, 18, ADC_CHANNEL_SPEED_LOW, ADC_BLOCKING);
+    // WAIT(SLOW);
   }
 }
 
@@ -151,7 +148,7 @@ void adc_driver_scan_setup(uint16_t* out_arr, const uint8_t arr_len) {
               .mem_data_size = DMA_DATA_SIZE_16_BIT,
               .peri_data_size = DMA_DATA_SIZE_16_BIT,
               .dma_elements = arr_len,
-              .channel = 0b001,
+              .channel = 0b000,
               .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_CIRCULAR,
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},

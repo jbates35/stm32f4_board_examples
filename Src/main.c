@@ -43,12 +43,19 @@ int main(void) {
 
   // adc_driver_single_setup();
   adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
+  // adc_driver_inj_setup();
 
   // NVIC_EnableIRQ(ADC_IRQn);
   // adc_interrupt_en(ADC1);
 
   for (;;) {
-    adc_scan_sample(ADC1, ADC_NON_BLOCKING);
+    adc_scan_sample(ADC1);
+    // adc_inj_scan_sample(ADC1, ADC_BLOCKING);
+    //
+    // uint16_t val1 = adc_get_inj_data(ADC1, 1);
+    // uint16_t val2 = adc_get_inj_data(ADC1, 2);
+    // uint16_t val3 = adc_get_inj_data(ADC1, 3);
+
     WAIT(MEDIUM);
     // int asdf = 0;
 
@@ -155,7 +162,7 @@ void adc_driver_scan_setup(uint16_t* out_arr, const uint8_t arr_len) {
       .p_stream_addr = DMA2_Stream0};
   dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
   dma_stream_init(&adc_dma_handle);
-
+  //
   ADCHandle_t adc_init_struct = {
       .addr = ADC1,
       .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
@@ -177,50 +184,26 @@ void adc_driver_scan_setup(uint16_t* out_arr, const uint8_t arr_len) {
   adc_init(&adc_init_struct);
 }
 
-void adc_test_scan_setup() {
-  // Enable RCC clock
-  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+void adc_driver_inj_setup() {
+  ADCHandle_t adc_init_struct = {
+      .addr = ADC1,
+      .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+              .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+              .interrupt_en = ADC_INTERRUPT_DISABLE,
+              .main_inj_chan_cfg = {.en = ADC_SCAN_ENABLE,
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
 
-  dma_adc_setup();
-
-  // Enable DMA mode
-  ADC1->CR2 |= (1 << ADC_CR2_DMA_Pos);
-  ADC1->CR2 |= (1 << ADC_CR2_DDS_Pos);
-
-  // Set up ADC in single conversion
-  ADC1->CR2 |= (0 << ADC_CR2_CONT_Pos);
-
-  // Set up ADC in scan mode
-  ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
-
-  // Ensure the EOC gets triggered after each conversion
-  ADC1->CR2 &= ~(1 << ADC_CR2_EOCS_Pos);
-
-  // Select number of channels to sample
-  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
-  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
-
-  // 3.Select ADC1_IN18 input channel.
-  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
-  ADC1->SQR3 |= (1 << ADC_SQR3_SQ2_Pos);
-  ADC1->SQR3 |= (18 << ADC_SQR3_SQ3_Pos);
-
-  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
-  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
-  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
-  ADC1->SMPR1 |= (0b010 << ADC_SMPR1_SMP18_Pos);
-
-  // TRY INJECTED CHANNELS /////////
-
-  // END INJECTED CHANNELS ///////
-
-  // Turn ADC on
-  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
-
-  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
-  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
-
-  WAIT(FAST);
+                                    },
+                                    .sequence_length = 3},
+              .main_seq_chan_cfg.en = ADC_SCAN_DISABLE,
+              .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
+              .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+              .resolution = ADC_RESOLUTION_12_BIT,
+              .trigger_cfg = ADC_TRIGGER_MODE_MANUAL}};
+  adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
+  adc_init(&adc_init_struct);
 }
 
 void adc_test_cont_setup() {

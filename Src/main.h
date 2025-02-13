@@ -1,4 +1,6 @@
 #include "stm32f446xx.h"
+#include "stm32f446xx_adc.h"
+#include "stm32f446xx_dma.h"
 #include "stm32f446xx_gpio.h"
 #include "stm32f446xx_tim.h"
 
@@ -81,10 +83,11 @@ void adc_dual_channel_setup();
 void adc_driver_single_setup();
 void adc_driver_scan_setup(uint16_t *out_arr, const uint8_t arr_len);
 void adc_driver_inj_setup();
+void adc_driver_scan_start();
 
 void dma_adc_setup();
 void dma_adc_dual_setup();
 void read_temperature_setup();
 float read_temperature();
-float convert_adc_to_temperature(uint16_t adc_val, uint8_t adc_bit_width);
-void adc_interrupt_en(ADC_TypeDef *adc_addr);
+
+int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel);

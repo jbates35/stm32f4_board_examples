@@ -22,6 +22,7 @@
 
 #include "stm32f446xx_adc.h"
 #include "stm32f446xx_dma.h"
+#include "stm32f446xx_tim.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -34,8 +35,7 @@ int main(void) {
   adc_gpio_setup();
 
   // adc_driver_single_setup();
-  adc_driver_scan_setup(adc_arr, (uint8_t)SIZEOF(adc_arr));
-  adc_driver_scan_start();
+  adc_tim_scan_example(adc_arr, (uint8_t)SIZEOF(adc_arr));
   // adc_driver_inj_setup();
 
   for (;;) {
@@ -126,7 +126,20 @@ void adc_driver_single_setup() {
   adc_init(&adc_init_struct);
 }
 
-void adc_driver_scan_setup(uint16_t* out_arr, const uint8_t arr_len) {
+void adc_tim_scan_example(uint16_t* out_arr, const uint8_t arr_len) {
+  TimerHandle_t adc_tim_handle = {.cfg = {.channel_1 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE,
+                                                        .capture_edge = TIMER_CAPTURE_RISING_EDGE,
+                                                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM,
+                                                        .gpio_en = TIMER_GPIO_DISABLE,
+                                                        .ccr = 0,
+                                                        .interrupt_en = TIMER_INTERRUPT_DISABLE},
+                                          .channel_count = 1,
+                                          .arr = 0xffff,
+                                          .prescaler = 507},
+                                  .p_base_addr = TIM5};
+  timer_peri_clock_control(TIM5, 1);
+  timer_init(&adc_tim_handle);
+
   DMAHandle_t adc_dma_handle = {
       .cfg = {.in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
               .out = {.addr = (uintptr_t)out_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},

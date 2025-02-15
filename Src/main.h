@@ -81,7 +81,7 @@ void adc_dual_gpio_setup();
 void adc_dual_channel_setup();
 
 void adc_driver_single_setup();
-void adc_driver_scan_setup(uint16_t *out_arr, const uint8_t arr_len);
+void adc_tim_scan_example(uint16_t *out_arr, const uint8_t arr_len);
 void adc_driver_inj_setup();
 void adc_driver_scan_start();
 

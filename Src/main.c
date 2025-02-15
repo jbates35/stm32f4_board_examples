@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 
+#include "stm32f446xx.h"
 #include "stm32f446xx_adc.h"
 #include "stm32f446xx_dma.h"
 #include "stm32f446xx_tim.h"
@@ -40,6 +41,10 @@ int main(void) {
 
   for (;;) {
   }
+}
+
+void TIM5_IRQHandler(void) {
+	int asdf = 0;
 }
 
 void DMA2_Stream0_IRQHandler(void) {
@@ -132,12 +137,13 @@ void adc_tim_scan_example(uint16_t* out_arr, const uint8_t arr_len) {
                                                         .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM,
                                                         .gpio_en = TIMER_GPIO_DISABLE,
                                                         .ccr = 0,
-                                                        .interrupt_en = TIMER_INTERRUPT_DISABLE},
+                                                        .interrupt_en = TIMER_INTERRUPT_ENABLE},
                                           .channel_count = 1,
                                           .arr = 0xffff,
                                           .prescaler = 507},
                                   .p_base_addr = TIM5};
   timer_peri_clock_control(TIM5, 1);
+  NVIC_EnableIRQ(TIM5_IRQn);
   timer_init(&adc_tim_handle);
 
   DMAHandle_t adc_dma_handle = {

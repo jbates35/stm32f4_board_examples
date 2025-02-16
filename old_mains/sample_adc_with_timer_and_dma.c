@@ -129,7 +129,7 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
               .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
                                     .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
                                                  {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
-                                                 {.channel = 16, .speed = ADC_CHANNEL_SPEED_LOW}
+                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
 
                                     },
                                     .sequence_length = 3},

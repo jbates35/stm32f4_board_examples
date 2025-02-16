@@ -37,15 +37,14 @@ int main(void) {
 
   // adc_driver_single_setup();
   adc_tim_scan_example(adc_arr, (uint8_t)SIZEOF(adc_arr));
+  adc_driver_scan_start();
   // adc_driver_inj_setup();
 
   for (;;) {
   }
 }
 
-void TIM5_IRQHandler(void) {
-	int asdf = 0;
-}
+void TIM5_IRQHandler(void) { int asdf = 0; }
 
 void DMA2_Stream0_IRQHandler(void) {
   if (dma_irq_handling(DMA2, 0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
@@ -171,23 +170,23 @@ void adc_tim_scan_example(uint16_t* out_arr, const uint8_t arr_len) {
 
   ADCHandle_t adc_init_struct = {
       .addr = ADC1,
-      .cfg = {
-          .dual_cfg.en = ADC_DUAL_MODE_DISABLE,
-          .inj_autostart = ADC_INJ_AUTOSTART_OFF,
-          .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
-                                .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
-                                             {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
-                                             {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
+      .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+              .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+              .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 16, .speed = ADC_CHANNEL_SPEED_LOW}
 
-                                },
-                                .sequence_length = 3},
-          .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
-          .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
-          .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
-          .resolution = ADC_RESOLUTION_12_BIT,
-          .interrupt_en = ADC_INTERRUPT_ENABLE,
-          .trigger_cfg = {
-              .mode = ADC_TRIGGER_MODE_TIM, .timer_sel = ADC_TRIGGER_TIM5_CH1, .edge_sel = ADC_TRIGGER_EDGE_RISING}}};
+                                    },
+                                    .sequence_length = 3},
+              .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
+              .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
+              .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+              .resolution = ADC_RESOLUTION_12_BIT,
+              .interrupt_en = ADC_INTERRUPT_ENABLE,
+              .trigger_cfg = {.mode = ADC_TRIGGER_MODE_CONTINUOUS,
+                              .timer_sel = ADC_TRIGGER_TIM5_CH1,
+                              .edge_sel = ADC_TRIGGER_EDGE_RISING}}};
   adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
   adc_init(&adc_init_struct);
 }

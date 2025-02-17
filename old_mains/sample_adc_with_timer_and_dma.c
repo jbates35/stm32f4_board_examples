@@ -139,7 +139,7 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
               .resolution = ADC_RESOLUTION_12_BIT,
               .interrupt_en = ADC_INTERRUPT_ENABLE,
               .trigger_cfg = {.mode = ADC_TRIGGER_MODE_CONTINUOUS,
-                              .timer_sel = ADC_TRIGGER_TIM5_CH1,
+                              .timer_sel = ADC_TRIGGER_T5C1_JT5C4,
                               .edge_sel = ADC_TRIGGER_EDGE_RISING}}};
   adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
   adc_init(&adc_init_struct);

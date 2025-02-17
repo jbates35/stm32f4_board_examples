@@ -16,95 +16,41 @@
  ******************************************************************************
  */
 
+#include "main.h"
+
 #include <stdint.h>
-#include <stdio.h>
 
 #include "stm32f446xx.h"
-#include "stm32f446xx_gpio.h"
+#include "stm32f446xx_adc.h"
+#include "stm32f446xx_dma.h"
 #include "stm32f446xx_tim.h"
-
-#define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
-
-#define FAST 100000
-#define MEDIUM 300000
-#define SLOW 1000000
-#define WAIT(CNT)                              \
-  do {                                         \
-    for (int def_i = 0; def_i < CNT; def_i++); \
-  } while (0)
-
-/******* PINS *********/
-#define LED_GREEN_PORT GPIOA
-#define LED_GREEN_PIN 5
-#define LED_GREEN_ALT_FN 1
-
-#define USER_PBUTTON_PORT GPIOC
-#define USER_PBUTTON_PIN 13
-
-#define INPUT_CAPTURE_GPIO_PORT GPIOB
-#define INPUT_CAPTURE_GPIO_PIN 6
-#define INPUT_CAPTURE_GPIO_ALT_FN 2
-
-#define PWM_GPIO_PORT GPIOB
-#define PWM_GPIO_PIN 3
-#define PWM_GPIO_ALT_FN 1
-
-#define SPI_GPIO_PORT GPIOA
-#define SPI_GPIO_NSS_PIN 4
-#define SPI_GPIO_CLK_PIN 5
-#define SPI_GPIO_MISO_PIN 6
-#define SPI_GPIO_MOSI_PIN 7
-
-/******* TIMERS ********/
-#define TIM_TIMER_ADDR TIM5
-#define TIM_CHANNEL 1
-
-#define PWM_TIMER_ADDR TIM2
-#define PWM_CHANNEL 2
-
-#define INPUT_CAPTURE_ADDR TIM4
-#define INPUT_CAPTURE_CHAN 1
-#define OUTPUT_COMPARE_CHAN_LO 2
-#define OUTPUT_COMPARE_CHAN_HI 3
-
-/****** SPI *********/
-#define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b010
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-void setup_gpio();
-void setup_timers();
-
-void spi_setup_test();
-
-int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
-
-int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
-int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
+volatile int adc_cnt = 0;
+volatile uint16_t adc_arr[3];
 
 int main(void) {
-  // setup_gpio();
-  // setup_timers();
+  adc_gpio_setup();
 
-  spi_setup_test();
+  // adc_driver_single_setup();
+  adc_tim_scan_example(adc_arr, (uint8_t)SIZEOF(adc_arr));
+  adc_driver_scan_start();
+  // adc_driver_inj_setup();
 
-  // Create string for SPI testing
-  char test_str[] = " WHO LET THE DOwaejfoiwefjiT";
-  int len = SIZEOF(test_str);
-
-  /* Loop forever */
   for (;;) {
-    // Send SPI Tx
-    uint16_t rx_byte = 0;
-    spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
-    while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
-    rx_byte = SPI_PORT->DR;
-    ITM_SendChar(rx_byte);
-    WAIT(SLOW);
+  }
+}
+
+void TIM5_IRQHandler(void) { int asdf = 0; }
+
+void DMA2_Stream0_IRQHandler(void) {
+  if (dma_irq_handling(DMA2, 0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
+    uint16_t temp_adc_val = adc_arr[2];
+    float temp = convert_adc_to_temperature(temp_adc_val, ADC_RESOLUTION_12_BIT);
+    int asdf = 0;
   }
 }
 
@@ -153,221 +99,216 @@ void setup_gpio() {
   GPIO_init(&capture_handler);
 }
 
-void setup_timers() {
-  // For PWM on PB11
-  timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
-  TimerHandle_t tim2_handle = {.p_base_addr = TIM2,
-                               .cfg = {.arr = 1000,
-                                       .channel_count = 4,
-                                       .prescaler = 253,
-                                       .channel_2 = {.gpio_en = TIMER_GPIO_ENABLE,
-                                                     .interrupt_en = TIMER_INTERRUPT_DISABLE,
-                                                     .channel_mode = TIMER_CHANNEL_MODE_PWM_HI,
-                                                     .ccr = 0}}};
-  timer_init(&tim2_handle);
+void adc_gpio_setup() {
+  // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
+  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_MEDIUM, .float_resistor = GPIO_PUPDR_NONE};
 
-  // For input capture on PB6 and some compare channels (2&3)
-  timer_peri_clock_control(TIM4, TIMER_PERI_CLOCK_ENABLE);
-  TimerHandle_t tim4_handle = {
-      .p_base_addr = TIM4,
-      .cfg = {
-          .arr = 0xffff,
-          .prescaler = 507,
-          .channel_count = 3,
-          .channel_1 = {.gpio_en = TIMER_GPIO_ENABLE,
-                        .channel_mode = TIMER_CHANNEL_MODE_CAPTURE,
-                        .interrupt_en = TIMER_INTERRUPT_ENABLE,
-                        .capture_edge = TIMER_CAPTURE_BOTH_EDGE,
-                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM},
-          .channel_2 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0},
-          .channel_3 = {
-              .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
-  timer_init(&tim4_handle);
-  NVIC_EnableIRQ(TIM4_IRQn);
+  // ADC 0
+  GPIO_peri_clock_control(ADC1_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC1_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc0_handler.cfg.pin_number = ADC1_CHAN0_GPIO_PIN;
+  GPIO_init(&adc0_handler);
+
+  // ADC 1
+  GPIO_peri_clock_control(ADC1_CHAN1_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC1_CHAN1_GPIO_PORT, .cfg = cfg};
+  adc1_handler.cfg.pin_number = ADC1_CHAN1_GPIO_PIN;
+  GPIO_init(&adc1_handler);
 }
 
-////// INTERRUPTS ///////
-void TIM4_IRQHandler(void) {
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
-    uint8_t rising_edge = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
-    static uint16_t capture_val = 0;
-    static uint16_t capture_val_falling = 0;
-
-    // Rising edge
-    if (rising_edge) {
-      capture_val_falling = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN);
-    }
-    // Falling edge
-    else {
-      capture_val = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN) - capture_val_falling;
-      float pwm_alpha = (float)capture_val / timer_get_period_ticks(INPUT_CAPTURE_ADDR);
-      timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
-    }
-  }
-
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_HI)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
-  }
-
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_LO)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
-  }
+void adc_driver_single_setup() {
+  ADCHandle_t adc_init_struct = {.addr = ADC1,
+                                 .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+                                         .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+                                         .interrupt_en = ADC_INTERRUPT_DISABLE,
+                                         .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
+                                         .main_seq_chan_cfg.en = ADC_SCAN_DISABLE,
+                                         .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+                                         .resolution = ADC_RESOLUTION_12_BIT,
+                                         .trigger_cfg.mode = ADC_TRIGGER_MODE_MANUAL}};
+  adc_peri_clock_control(ADC1, 1);
+  adc_init(&adc_init_struct);
 }
 
-void EXTI15_10_IRQHandler(void) {
-  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, 0);
-  }
-}
-////// END INTERRUPTS ///////
+void adc_tim_scan_example(uint16_t* out_arr, const uint8_t arr_len) {
+  TimerHandle_t adc_tim_handle = {.cfg = {.channel_1 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE,
+                                                        .capture_edge = TIMER_CAPTURE_RISING_EDGE,
+                                                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM,
+                                                        .gpio_en = TIMER_GPIO_DISABLE,
+                                                        .ccr = 0,
+                                                        .interrupt_en = TIMER_INTERRUPT_ENABLE},
+                                          .channel_count = 1,
+                                          .arr = 0xffff,
+                                          .prescaler = 507},
+                                  .p_base_addr = TIM5};
+  timer_peri_clock_control(TIM5, 1);
+  NVIC_EnableIRQ(TIM5_IRQn);
+  timer_init(&adc_tim_handle);
 
-void spi_setup_test() {
-  // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
+  DMAHandle_t adc_dma_handle = {
+      .cfg = {.in = {.addr = (uintptr_t)&ADC1->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)out_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .mem_data_size = DMA_DATA_SIZE_16_BIT,
+              .peri_data_size = DMA_DATA_SIZE_16_BIT,
+              .dma_elements = arr_len,
+              .channel = 0b000,
+              .priority = DMA_PRIORITY_MAX,
+              .circ_buffer = DMA_BUFFER_CIRCULAR,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
+              .interrupt_en =
+                  {
+                      .full_transfer = DMA_INTERRUPT_ENABLE,
+                      .transfer_error = DMA_INTERRUPT_DISABLE,
+                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
+                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                  }},
+      .p_stream_addr = DMA2_Stream0};
+  dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
+  dma_stream_init(&adc_dma_handle);
+  //
+  NVIC_EnableIRQ(DMA2_Stream0_IRQn);
 
-  // First enable RCC clock
-  RCC->APB2ENR |= (1 << RCC_APB2ENR_SPI1EN_Pos);
+  ADCHandle_t adc_init_struct = {
+      .addr = ADC1,
+      .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+              .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+              .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 16, .speed = ADC_CHANNEL_SPEED_LOW}
 
-  // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
-  GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_HIGH,
-                                   .float_resistor = GPIO_PUPDR_NONE,
-                                   .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                   .alt_func_num = 5};
-  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_clk_handle.cfg.pin_number = SPI_GPIO_CLK_PIN;
-  GPIO_init(&spi_gpio_clk_handle);
-
-  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_miso_handle.cfg.pin_number = SPI_GPIO_MISO_PIN;
-  GPIO_init(&spi_gpio_miso_handle);
-
-  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
-  GPIO_init(&spi_gpio_mosi_handle);
-
-  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
-  GPIO_init(&spi_gpio_nss_handle);
-
-  // 2.Write to the SPI_CR1 register:
-  // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
-  // NOTE says: These bits should not be changed when communication is ongoing.
-  SPI_PORT->CR1 |= (SPI_BAUD_RATE << SPI_CR1_BR_Pos);
-
-  // b) Configure the CPOL and CPHA bits combination to define one of the fou  relationships between the data transfer and the serial clock. (Note: 2 - except the  case when CRC is enabled at TI mode).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CPOL_Pos);
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CPHA_Pos);
-
-  // c) Select simplex or half-duplex mode by configuring RXONLY or BIDIMODE and BIDIOE (RXONLY and BIDIMODE can't be set at the same time).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_BIDIMODE_Pos);
-  // BIDIOE is bidirectional output enable (output-only on the pin, as opposed to input-only)
-
-  // d) Configure the LSBFIRST bit to define the frame format (Note: 2).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_LSBFIRST_Pos);  // MSB first
-
-  // e) Configure the CRCEN and CRCEN bits if CRC is needed (while SCK clock signal is at idle state
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
-
-  // f) Configure SSM and SSI (Note: 2).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_SSM_Pos);
-  SPI_PORT->CR1 |= (0 << SPI_CR1_SSI_Pos);
-
-  // g) Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
-  SPI_PORT->CR1 |= (1 << SPI_CR1_MSTR_Pos);
-
-  // Ad hoc - turn software slave management on
-
-  // h) Set the DFF bit to configure the data frame format (8 or 16 bits).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_DFF_Pos);  // 8-bit DFFs
-
-  // 3:Write to SPI_CR2 register:
-  //    a) Configure SSOE (Note: 1 & 2).
-  SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
-
-  //    b) Set the FRF bit if the TI protocol is required. Motorola vs TI
-  SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
-
-  // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
-
-  // 5.Write proper DMA registers: Configure DMA streams dedicated for SPI Tx and Rx in DMA registers if the DMA streams are used.
-
-  // Lastly, enable the SPI peripheral
-  SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
-
-  // NOTES: Seems like I can only enable master mode when SSI and SSM are 1
-  // Otherwise, master gets forced to 0, and MODE FAULT turns to 1
-
-  // REASON: According to the manual, if NSS is pulled low, MODF is set and master mode is cleared
-  // Therefore it is recommended to have a pullup resistor if NSS pin is being used
-  // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
+                                    },
+                                    .sequence_length = 3},
+              .main_inj_chan_cfg.en = ADC_SCAN_DISABLE,
+              .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
+              .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+              .resolution = ADC_RESOLUTION_12_BIT,
+              .interrupt_en = ADC_INTERRUPT_ENABLE,
+              .trigger_cfg = {.mode = ADC_TRIGGER_MODE_CONTINUOUS,
+                              .timer_sel = ADC_TRIGGER_TIM5_CH1,
+                              .edge_sel = ADC_TRIGGER_EDGE_RISING}}};
+  adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
+  adc_init(&adc_init_struct);
 }
 
-int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte) {
-  if (spi_port == NULL) return -1;
+void adc_driver_scan_start() { adc_scan_sample(ADC1); }
 
-  // While the TX Buffer is not empty...
-  while (!(spi_port->SR & (1 << SPI_SR_TXE_Pos)));
-  spi_port->DR = tx_byte;
+void adc_driver_inj_setup() {
+  ADCHandle_t adc_init_struct = {
+      .addr = ADC1,
+      .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
+              .inj_autostart = ADC_INJ_AUTOSTART_OFF,
+              .interrupt_en = ADC_INTERRUPT_DISABLE,
+              .main_inj_chan_cfg = {.en = ADC_SCAN_ENABLE,
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
+                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
 
-  return 0;
+                                    },
+                                    .sequence_length = 3},
+              .main_seq_chan_cfg.en = ADC_SCAN_DISABLE,
+              .eoc_sel = ADC_INTERRUPT_EOC_SELECT_GROUP,
+              .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
+              .resolution = ADC_RESOLUTION_12_BIT,
+              .trigger_cfg.mode = ADC_TRIGGER_MODE_MANUAL}};
+  adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
+  adc_init(&adc_init_struct);
 }
 
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len) {
-  if (spi_port == NULL) return -1;
+void adc_dual_gpio_setup() {
+  // PA 0 and 1 will be the ADC channels. That relates to ADC channels 0 and 1
+  GPIOConfig_t cfg = {.mode = GPIO_MODE_ANALOG, .speed = GPIO_SPEED_HIGH, .float_resistor = GPIO_PUPDR_NONE};
 
-  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
-  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
+  // ADC1 chan0
+  GPIO_peri_clock_control(ADC1_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc0_handler = {.p_GPIO_addr = ADC1_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc0_handler.cfg.pin_number = ADC1_CHAN0_GPIO_PIN;
+  GPIO_init(&adc0_handler);
 
-  while (len > 0) {
-    // Get the next frame available
-    uint16_t tx_word = 0;
-    if (dff_bytes == 1)
-      tx_word = *((uint8_t *)tx_buffer);
-    else {
-      tx_word = *((uint16_t *)tx_buffer);
-      if (len == 1) tx_word &= 0xFF00;
-    }
+  // ADC2 chan0
+  GPIO_peri_clock_control(ADC2_CHAN0_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t adc1_handler = {.p_GPIO_addr = ADC2_CHAN0_GPIO_PORT, .cfg = cfg};
+  adc1_handler.cfg.pin_number = ADC2_CHAN0_GPIO_PIN;
+  GPIO_init(&adc1_handler);
 
-    // Send byte
-    int result = spi_tx_byte(spi_port, tx_word);
-    if (result != 0) return result;
+  // // ADC1 chan2
+  // GPIO_peri_clock_control(ADC1_CHAN2_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  // GPIOHandle_t adc0chan2_handler = {.p_GPIO_addr = ADC1_CHAN2_GPIO_PORT, .cfg = cfg};
+  // adc0chan2_handler.cfg.pin_number = ADC1_CHAN2_GPIO_PIN;
+  // GPIO_init(&adc0chan2_handler);
+}
+void adc_dual_channel_setup() {
+  // Enable RCC clock
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC1EN_Pos);
+  RCC->APB2ENR |= (1 << RCC_APB2ENR_ADC2EN_Pos);
 
-    // Move buffer along to the next available frame
-    tx_buffer += dff_bytes;
-    len -= dff_bytes;
-  }
+  dma_adc_dual_setup();
 
-  return 0;
+  ADC1->CR1 = 0;
+  ADC1->CR2 = 0;
+  ADC2->CR1 = 0;
+  ADC2->CR2 = 0;
+
+  ADC->CCR = 0;
+  ADC->CCR |= (0b10 << ADC_CCR_DMA_Pos) | (1 << ADC_CCR_DDS_Pos);
+  ADC->CCR |= (0b00110 << ADC_CCR_MULTI_Pos);
+  // ADC->CCR |= (0b11 << ADC_CCR_ADCPRE_Pos);
+
+  // Set up ADC in scan mode
+  ADC1->CR1 |= (1 << ADC_CR1_SCAN_Pos);
+
+  // Ensure the EOC gets triggered after each conversion
+  ADC1->CR2 &= ~(1 << ADC_CR2_EOCS_Pos);
+  ADC1->CR2 |= (1 << ADC_CR1_EOCIE_Pos);
+
+  // Select number of channels to sample
+  ADC1->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC1->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+
+  // Select number of channels to sample
+  ADC2->SQR1 &= ~(0xF << ADC_SQR1_L_Pos);
+  ADC2->SQR1 |= (0b10 << ADC_SQR1_L_Pos);
+
+  ADC1->SQR3 |= (0 << ADC_SQR3_SQ1_Pos);
+  ADC2->SQR3 |= (1 << ADC_SQR3_SQ1_Pos);
+
+  // 4.Select a sampling time greater than the minimum sampling time specified in the datasheet.
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+  ADC1->SMPR2 |= (0b010 << ADC_SMPR2_SMP2_Pos);
+  ADC2->SMPR2 |= (0b010 << ADC_SMPR2_SMP0_Pos);
+  ADC2->SMPR2 |= (0b010 << ADC_SMPR2_SMP1_Pos);
+
+  // Turn ADC on
+  ADC1->CR2 |= (1 << ADC_CR2_ADON_Pos);
+  ADC2->CR2 |= (1 << ADC_CR2_ADON_Pos);
+
+  // 5.Set the TSVREFE bit in the ADC_CCR register to wake up the temperature sensor from power down mode
+  ADC123_COMMON->CCR |= (1 << ADC_CCR_TSVREFE_Pos);
+
+  WAIT(FAST);
 }
 
-int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte) {
-  if (spi_port == NULL) return -1;
-  if (!(spi_port->SR & (1 << SPI_SR_RXNE))) return 1;
-  *rx_byte = spi_port->DR;
-  return 0;
-}
+// void dma_adc_dual_setup() {
+//   dma_peri_clock_control(DMA2, 1);
+//   DMAHandle_t adc_dma_handle = {
+//       .cfg = {.in = {.addr = (uintptr_t)&ADC->CDR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+//               .out = {.addr = (uintptr_t)adc_vals_dual, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+//               .mem_data_size = DMA_DATA_SIZE_32_BIT,
+//               .peri_data_size = DMA_DATA_SIZE_32_BIT,
+//               .dma_elements = 16,
+//               .channel = 0b000,
+//               .priority = DMA_PRIORITY_MAX,
+//               .circ_buffer = DMA_BUFFER_CIRCULAR,
+//               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
+//       .p_stream_addr = DMA2_Stream0};
+//   dma_stream_init(&adc_dma_handle);
+// }
 
-int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
-  if (spi_port == NULL) return -1;
-
-  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
-  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
-
-  while (len > 0) {
-    uint16_t rx_byte = 0;
-    while (spi_rx_byte(spi_port, &rx_byte));
-
-    if (dff_bytes == 1)
-      *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
-    else {
-      *((uint16_t *)rx_buffer) = rx_byte;
-    }
-
-    // Move buffer along to the next available frame
-    rx_buffer += dff_bytes;
-    len -= dff_bytes;
-  }
-
-  return 0;
-}
+// Thigns needed for ADC
+// - Dual channel mode
+// - Injected channels
+// - Calibration
+// - Temperature sense
+// - Single sample mode, multi-channel
+// - Manual sample, auto sample

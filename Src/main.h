@@ -30,15 +30,12 @@
 #define PWM_GPIO_PIN 3
 #define PWM_GPIO_ALT_FN 1
 
-#define SPI_GPIO_PORT GPIOA
-#define SPI_GPIO_NSS_PIN 4
-#define SPI_GPIO_CLK_PIN 5
-#define SPI_GPIO_MISO_PIN 6
-#define SPI_GPIO_MOSI_PIN 7
-
 #define MEASURE_OSC_GPIO_ADDR GPIOB
 #define MEASURE_OSC_GPIO_PIN 4
 #define MEASURE_OSC_GPIO_ALTFN 2
+
+#define MEASURE_SIG_GPIO_ADDR GPIOB
+#define MEASURE_SIG_GPIO_PIN 5
 
 #define ADC1_CHAN0_GPIO_PORT GPIOA
 #define ADC1_CHAN0_GPIO_PIN 0
@@ -61,6 +58,7 @@
 
 #define INPUT_CAPTURE_ADDR TIM4
 #define INPUT_CAPTURE_CHAN 1
+
 #define OUTPUT_COMPARE_CHAN_LO 2
 #define OUTPUT_COMPARE_CHAN_HI 3
 
@@ -164,4 +162,25 @@ static inline void setup_timers() {
               .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
   timer_init(&tim4_handle);
   NVIC_EnableIRQ(TIM4_IRQn);
+}
+
+static inline void setup_meas_gpio() {
+  GPIO_peri_clock_control(MEASURE_OSC_GPIO_ADDR, GPIO_PERI_CLOCK_ENABLE);
+  GPIOHandle_t osc_handler = {.p_GPIO_addr = MEASURE_OSC_GPIO_ADDR,
+                              .cfg = {.mode = GPIO_MODE_ALTFN,
+                                      .pin_number = MEASURE_OSC_GPIO_PIN,
+                                      .speed = GPIO_SPEED_MEDIUM,
+                                      .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                      .alt_func_num = MEASURE_OSC_GPIO_ALTFN}};
+  GPIO_init(&osc_handler);
+
+  GPIO_peri_clock_control(MEASURE_SIG_GPIO_ADDR, GPIO_PERI_CLOCK_ENABLE);
+  GPIOHandle_t sig_handler = {.p_GPIO_addr = MEASURE_SIG_GPIO_ADDR,
+                              .cfg = {
+                                  .mode = GPIO_MODE_OUT,
+                                  .pin_number = MEASURE_SIG_GPIO_PIN,
+                                  .speed = GPIO_SPEED_MEDIUM,
+                                  .output_type = GPIO_OP_TYPE_PUSHPULL,
+                              }};
+  GPIO_init(&sig_handler);
 }

@@ -25,6 +25,14 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
+#define SPI_PORT SPI1
+#define SPI_BAUD_RATE 0b010
+#define SPI_GPIO_PORT GPIOA
+#define SPI_GPIO_NSS_PIN 4
+#define SPI_GPIO_CLK_PIN 5
+#define SPI_GPIO_MISO_PIN 6
+#define SPI_GPIO_MOSI_PIN 7
+
 void spi_master_setup_test();
 
 int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
@@ -34,8 +42,8 @@ int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
 int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 int main(void) {
-  // setup_gpio();
-  // setup_timers();
+  setup_gpio();
+  setup_meas_gpio();
 
   spi_master_setup_test();
 

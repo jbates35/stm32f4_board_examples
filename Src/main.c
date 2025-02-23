@@ -20,7 +20,10 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
+#include "stm32f446xx.h"
+#include "stm32f446xx_dma.h"
 #include "stm32f446xx_gpio.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
@@ -46,64 +49,28 @@ int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
 int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
+void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
+
+char dma_tx_str[50];
+
 int main(void) {
   setup_gpio();
-  setup_meas_gpio();
-
   spi_master_setup_test();
 
-  GPIO_set_output(SPI_GPIO_MANUAL_NSS_PORT, SPI_GPIO_MANUAL_NSS_PIN, 1);
-
-  // Create string for SPI testing
-  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
-  int len = SIZEOF(test_str);
+  memset(&dma_tx_str, 0, 50);
 
   /* Loop forever */
   for (;;) {
-    // // Send SPI Tx
-    //
-    spi_tx_word(SPI_PORT, (const uint8_t *)&len, 1);
-    spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
-    WAIT(SLOW);
-
-    // uint16_t rx_byte = 0;
-    // while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
-    // rx_byte = SPI_PORT->DR;
-    // ITM_SendChar(rx_byte);
-  }
-}
-
-////// INTERRUPTS ///////
-void TIM4_IRQHandler(void) {
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN)) {
-    uint8_t rising_edge = GPIO_get_input(INPUT_CAPTURE_GPIO_PORT, INPUT_CAPTURE_GPIO_PIN);
-    static uint16_t capture_val = 0;
-    static uint16_t capture_val_falling = 0;
-
-    // Rising edge
-    if (rising_edge) {
-      capture_val_falling = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN);
-    }
-    // Falling edge
-    else {
-      capture_val = timer_get_current_ticks(INPUT_CAPTURE_ADDR, INPUT_CAPTURE_CHAN) - capture_val_falling;
-      float pwm_alpha = (float)capture_val / timer_get_period_ticks(INPUT_CAPTURE_ADDR);
-      timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, pwm_alpha);
-    }
-  }
-
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_HI)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 1);
-  }
-
-  if (timer_irq_handling(INPUT_CAPTURE_ADDR, OUTPUT_COMPARE_CHAN_LO)) {
-    GPIO_set_output(LED_GREEN_PORT, LED_GREEN_PIN, 0);
   }
 }
 
 void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    timer_set_pwm_percent(PWM_TIMER_ADDR, PWM_CHANNEL, 0);
+    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
+
+    // LOAD SPI word
+    char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
+    int len = SIZEOF(test_str);
   }
 }
 ////// END INTERRUPTS ///////
@@ -236,6 +203,19 @@ int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len) {
   return 0;
 }
 
+void spi_tx_in_for_loop() {
+  setup_gpio();
+  spi_master_setup_test();
+
+  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
+  int len = SIZEOF(test_str);
+  for (;;) {
+    spi_tx_word(SPI_PORT, (const uint8_t *)&len, 1);
+    spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
+    WAIT(FAST);
+  }
+}
+
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte) {
   if (spi_port == NULL) return -1;
   if (!(spi_port->SR & (1 << SPI_SR_RXNE))) return 1;
@@ -265,4 +245,41 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
   }
 
   return 0;
+}
+
+void spi_rx_in_for_loop() {
+  setup_gpio();
+  spi_master_setup_test();
+
+  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
+  int len = SIZEOF(test_str);
+  for (;;) {
+    // uint16_t rx_byte = 0;
+    // while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
+    // rx_byte = SPI_PORT->DR;
+    // ITM_SendChar(rx_byte);
+  }
+}
+
+void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
+  dma_peri_clock_control(DMA2, 1);
+  DMAHandle_t spi_dma_tx_handle = {
+      .cfg = {.in = {.addr = (uintptr_t)in_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .out = {.addr = (uintptr_t)&SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .mem_data_size = DMA_DATA_SIZE_8_BIT,
+              .peri_data_size = DMA_DATA_SIZE_8_BIT,
+              .dma_elements = elements,
+              .channel = 0b011,
+              .priority = DMA_PRIORITY_MAX,
+              .circ_buffer = DMA_BUFFER_CIRCULAR,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
+      .p_stream_addr = DMA2_Stream3};
+  dma_stream_init(&spi_dma_tx_handle);
+
+  spi_master_setup_test();
+
+  SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
+  SPI_PORT->CR2 |= (1 << SPI_CR2_TXDMAEN_Pos);
+
+  SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
 }

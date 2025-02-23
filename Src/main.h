@@ -15,9 +15,8 @@
   } while (0)
 
 /******* PINS *********/
-#define LED_GREEN_PORT GPIOA
-#define LED_GREEN_PIN 5
-#define LED_GREEN_ALT_FN 1
+#define LED_GREEN_PORT GPIOC
+#define LED_GREEN_PIN 0
 
 #define USER_PBUTTON_PORT GPIOC
 #define USER_PBUTTON_PIN 13
@@ -93,71 +92,15 @@ static inline void setup_gpio() {
                                             .float_resistor = GPIO_PUPDR_NONE}};
   GPIO_init(&led_green_handler);
 
-  // PWM Output externally wired to PB3, attached later to timer 2 channel 2
-  GPIO_peri_clock_control(PWM_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t pwm_handler = {.p_GPIO_addr = PWM_GPIO_PORT,
-                              .cfg = {.mode = GPIO_MODE_ALTFN,
-                                      .pin_number = PWM_GPIO_PIN,
-                                      .speed = GPIO_SPEED_MEDIUM,
-                                      .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                      .float_resistor = GPIO_PUPDR_NONE,
-                                      .alt_func_num = PWM_GPIO_ALT_FN}};
-  GPIO_init(&pwm_handler);
-
   // User button on PC13, attached to a falling edge interrupt IRQ
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);
   GPIOHandle_t user_btn_handler = {.p_GPIO_addr = USER_PBUTTON_PORT,
                                    .cfg = {.mode = GPIO_MODE_IT_FT,
                                            .pin_number = USER_PBUTTON_PIN,
                                            .speed = GPIO_SPEED_LOW,
-                                           .output_type = GPIO_OP_TYPE_PUSHPULL,
                                            .float_resistor = GPIO_PUPDR_PULLDOWN}};
   GPIO_init(&user_btn_handler);
   NVIC_EnableIRQ(EXTI15_10_IRQn);
-
-  // Input capture on PB6, tied to a timer interrupt which captures the pulse width on timer 4 channel 1
-  GPIO_peri_clock_control(INPUT_CAPTURE_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t capture_handler = {.p_GPIO_addr = INPUT_CAPTURE_GPIO_PORT,
-                                  .cfg = {.mode = GPIO_MODE_ALTFN,
-                                          .pin_number = INPUT_CAPTURE_GPIO_PIN,
-                                          .speed = GPIO_SPEED_HIGH,
-                                          .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                          .float_resistor = GPIO_PUPDR_PULLDOWN,
-                                          .alt_func_num = INPUT_CAPTURE_GPIO_ALT_FN}};
-  GPIO_init(&capture_handler);
-}
-
-static inline void setup_timers() {
-  // For PWM on PB11
-  timer_peri_clock_control(TIM2, TIMER_PERI_CLOCK_ENABLE);
-  TimerHandle_t tim2_handle = {.p_base_addr = TIM2,
-                               .cfg = {.arr = 1000,
-                                       .channel_count = 4,
-                                       .prescaler = 253,
-                                       .channel_2 = {.gpio_en = TIMER_GPIO_ENABLE,
-                                                     .interrupt_en = TIMER_INTERRUPT_DISABLE,
-                                                     .channel_mode = TIMER_CHANNEL_MODE_PWM_HI,
-                                                     .ccr = 0}}};
-  timer_init(&tim2_handle);
-
-  // For input capture on PB6 and some compare channels (2&3)
-  timer_peri_clock_control(TIM4, TIMER_PERI_CLOCK_ENABLE);
-  TimerHandle_t tim4_handle = {
-      .p_base_addr = TIM4,
-      .cfg = {
-          .arr = 0xffff,
-          .prescaler = 507,
-          .channel_count = 3,
-          .channel_1 = {.gpio_en = TIMER_GPIO_ENABLE,
-                        .channel_mode = TIMER_CHANNEL_MODE_CAPTURE,
-                        .interrupt_en = TIMER_INTERRUPT_ENABLE,
-                        .capture_edge = TIMER_CAPTURE_BOTH_EDGE,
-                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM},
-          .channel_2 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0},
-          .channel_3 = {
-              .channel_mode = TIMER_CHANNEL_MODE_COMPARE, .interrupt_en = TIMER_INTERRUPT_ENABLE, .ccr = 0xffff / 4}}};
-  timer_init(&tim4_handle);
-  NVIC_EnableIRQ(TIM4_IRQn);
 }
 
 static inline void setup_meas_gpio() {

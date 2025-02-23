@@ -21,17 +21,22 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "stm32f446xx_gpio.h"
+
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
 #define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b010
+#define SPI_BAUD_RATE 0b111
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
+
+#define SPI_GPIO_MANUAL_NSS_PORT GPIOB
+#define SPI_GPIO_MANUAL_NSS_PIN 0
 
 void spi_master_setup_test();
 
@@ -47,19 +52,24 @@ int main(void) {
 
   spi_master_setup_test();
 
+  GPIO_set_output(SPI_GPIO_MANUAL_NSS_PORT, SPI_GPIO_MANUAL_NSS_PIN, 1);
+
   // Create string for SPI testing
-  char test_str[] = " WHO LET THE DOwaejfoiwefjiT";
+  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
   int len = SIZEOF(test_str);
 
   /* Loop forever */
   for (;;) {
-    // Send SPI Tx
-    uint16_t rx_byte = 0;
+    // // Send SPI Tx
+    //
+    spi_tx_word(SPI_PORT, (const uint8_t *)&len, 1);
     spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
-    while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
-    rx_byte = SPI_PORT->DR;
-    ITM_SendChar(rx_byte);
     WAIT(SLOW);
+
+    // uint16_t rx_byte = 0;
+    // while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
+    // rx_byte = SPI_PORT->DR;
+    // ITM_SendChar(rx_byte);
   }
 }
 
@@ -126,6 +136,14 @@ void spi_master_setup_test() {
   GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
   spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
   GPIO_init(&spi_gpio_nss_handle);
+
+  GPIOHandle_t manual_nss = {.cfg = {.pin_number = SPI_GPIO_MANUAL_NSS_PIN,
+                                     .mode = GPIO_MODE_OUT,
+                                     .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                     .speed = GPIO_SPEED_MEDIUM},
+                             .p_GPIO_addr = SPI_GPIO_MANUAL_NSS_PORT};
+  GPIO_peri_clock_control(SPI_GPIO_MANUAL_NSS_PORT, GPIO_PERI_CLOCK_ENABLE);
+  GPIO_init(&manual_nss);
 
   // 2.Write to the SPI_CR1 register:
   // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).

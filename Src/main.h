@@ -62,10 +62,6 @@
 #define OUTPUT_COMPARE_CHAN_LO 2
 #define OUTPUT_COMPARE_CHAN_HI 3
 
-/****** SPI *********/
-#define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b010
-
 void adc_gpio_setup();
 void adc_test_single_setup();
 void adc_test_disc_setup();

@@ -17,6 +17,12 @@
  ******************************************************************************
  */
 
+// NOTE:
+// Where I am at right now:
+// -DMA for some reason faults out with the FIFO buffer. This does not happen with it during ADC.
+// -I can only send a message once. After sending one message, I cannot re-enable the DMA stream.
+// -In circular mode, I can make an niterrupt which stops the DMA stream until we're ready again. THis seems to work okay.
+
 #include "main.h"
 
 #include <stdint.h>

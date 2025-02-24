@@ -85,18 +85,19 @@ void adc_gpio_setup() {
 }
 
 void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
-  TimerHandle_t adc_tim_handle = {.cfg = {.channel_1 = {.channel_mode = TIMER_CHANNEL_MODE_COMPARE,
-                                                        .capture_edge = TIMER_CAPTURE_RISING_EDGE,
-                                                        .capture_input_filter = TIMER_CAPTURE_FILTER_MEDIUM,
-                                                        .gpio_en = TIMER_GPIO_DISABLE,
-                                                        .ccr = 0,
-                                                        .interrupt_en = TIMER_INTERRUPT_ENABLE},
+  TimerHandle_t adc_tim_handle = {.cfg = {.channel_1 =
+                                              {
+                                                  .channel_mode = TIMER_CHANNEL_MODE_COMPARE,
+                                                  .gpio_en = TIMER_GPIO_DISABLE,
+                                                  .ccr = 0x7fff,
+                                                  .interrupt_en = TIMER_INTERRUPT_ENABLE,
+                                              },
+                                          .trigger_assignment = TIMER_TRIGGER_ASSIGNMENT_CH1,
                                           .channel_count = 1,
                                           .arr = 0xffff,
-                                          .prescaler = 507},
-                                  .p_base_addr = TIM5};
-  timer_peri_clock_control(TIM5, 1);
-  NVIC_EnableIRQ(TIM5_IRQn);
+                                          .prescaler = 257},
+                                  .p_base_addr = TIM8};
+  timer_peri_clock_control(TIM8, 1);
   timer_init(&adc_tim_handle);
 
   DMAHandle_t adc_dma_handle = {
@@ -120,7 +121,6 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
       .p_stream_addr = DMA2_Stream0};
   dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
   dma_stream_init(&adc_dma_handle);
-  //
   NVIC_EnableIRQ(DMA2_Stream0_IRQn);
 
   ADCHandle_t adc_init_struct = {
@@ -128,9 +128,9 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
       .cfg = {.dual_cfg.en = ADC_DUAL_MODE_DISABLE,
               .inj_autostart = ADC_INJ_AUTOSTART_OFF,
               .main_seq_chan_cfg = {.en = ADC_SCAN_ENABLE,
-                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_LOW},
-                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_LOW},
-                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_LOW}
+                                    .sequence = {{.channel = 0, .speed = ADC_CHANNEL_SPEED_HIGH},
+                                                 {.channel = 1, .speed = ADC_CHANNEL_SPEED_HIGH},
+                                                 {.channel = 18, .speed = ADC_CHANNEL_SPEED_HIGH}
 
                                     },
                                     .sequence_length = 3},
@@ -139,9 +139,8 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
               .temp_or_bat_en = ADC_TEMPORBAT_TEMPERATURE,
               .resolution = ADC_RESOLUTION_12_BIT,
               .interrupt_en = ADC_INTERRUPT_ENABLE,
-              .trigger_cfg = {.mode = ADC_TRIGGER_MODE_CONTINUOUS,
-                              .timer_sel = ADC_TRIGGER_T5C1_JT5C4,
-                              .edge_sel = ADC_TRIGGER_EDGE_RISING}}};
+              .trigger_cfg = {
+                  .mode = ADC_TRIGGER_MODE_TIM, .timer_sel = ADC_TRIGGER_T8TR, .edge_sel = ADC_TRIGGER_EDGE_BOTH}}};
   adc_peri_clock_control(ADC1, ADC_PERI_CLOCK_ENABLE);
   adc_init(&adc_init_struct);
 }

@@ -1,3 +1,4 @@
+// Will use as backup for main for now
 /**
  ******************************************************************************
  * @file           : main.c
@@ -38,6 +39,8 @@
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
 
+#define DMA_SPI_STREAM DMA2_Stream3
+
 #define SPI_GPIO_MANUAL_NSS_PORT GPIOB
 #define SPI_GPIO_MANUAL_NSS_PIN 0
 
@@ -51,29 +54,31 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
 
-char dma_tx_str[50];
+char dma_tx_str[17];
 
 int main(void) {
   setup_gpio();
-  spi_master_setup_test();
+  spi_master_setup_dma_test(dma_tx_str, SIZEOF(dma_tx_str));
 
-  memset(&dma_tx_str, 0, 50);
+  memset(&dma_tx_str, 0, SIZEOF(dma_tx_str));
+  char test_str[] = "asdfjkl lkjfdsa";
+  int len = SIZEOF(test_str);
+  dma_tx_str[0] = (char)len;
+  strcat(dma_tx_str, test_str);
 
   /* Loop forever */
   for (;;) {
+    int asdf = 0;
+    for (int i = 0; i < 3; i++) WAIT(SLOW);
   }
 }
 
 void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
     GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
-
-    // LOAD SPI word
-    char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
-    int len = SIZEOF(test_str);
+    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
   }
 }
-////// END INTERRUPTS ///////
 
 void spi_master_setup_test() {
   // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
@@ -271,9 +276,17 @@ void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
               .dma_elements = elements,
               .channel = 0b011,
               .priority = DMA_PRIORITY_MAX,
-              .circ_buffer = DMA_BUFFER_CIRCULAR,
-              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL},
-      .p_stream_addr = DMA2_Stream3};
+              .circ_buffer = DMA_BUFFER_FINITE,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
+              .interrupt_en =
+                  {
+                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
+                      .transfer_error = DMA_INTERRUPT_DISABLE,
+                      .full_transfer = DMA_INTERRUPT_DISABLE,
+                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                  },
+              .start_enabled = DMA_START_DISABLED},
+      .p_stream_addr = DMA_SPI_STREAM};
   dma_stream_init(&spi_dma_tx_handle);
 
   spi_master_setup_test();

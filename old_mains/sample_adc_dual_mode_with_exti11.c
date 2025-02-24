@@ -97,7 +97,8 @@ void adc_driver_dual_setup(volatile uint32_t *out_arr, const uint8_t arr_len) {
                       .transfer_error = DMA_INTERRUPT_DISABLE,
                       .direct_mode_error = DMA_INTERRUPT_DISABLE,
                       .half_transfer = DMA_INTERRUPT_DISABLE,
-                  }},
+                  },
+              .start_enabled = DMA_START_ENABLED},
       .p_stream_addr = DMA2_Stream0};
   dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
   dma_stream_init(&adc_dma_handle);

@@ -45,12 +45,13 @@
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
 
-#define DMA_SPI_STREAM DMA2_Stream3
+#define DMA_SPI_STREAM DMA2_Stream5
 
 #define SPI_GPIO_MANUAL_NSS_PORT GPIOB
 #define SPI_GPIO_MANUAL_NSS_PIN 0
 
 void spi_master_setup_test();
+void spi_tx_in_for_loop();
 
 int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
 int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
@@ -59,6 +60,7 @@ int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
 int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
+void spi_master_dma_exti_handler();
 
 char dma_tx_str[17];
 
@@ -83,6 +85,8 @@ void EXTI15_10_IRQHandler(void) {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
     GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
     dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
+
+    int asdfj = 0;
   }
 }
 
@@ -280,7 +284,7 @@ void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
               .mem_data_size = DMA_DATA_SIZE_8_BIT,
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = elements,
-              .channel = 0b011,
+              .channel = 3,
               .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_FINITE,
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
@@ -301,4 +305,13 @@ void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
   SPI_PORT->CR2 |= (1 << SPI_CR2_TXDMAEN_Pos);
 
   SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
+}
+
+void spi_master_dma_exti_handler() {
+  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
+    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
+    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
+
+    int asdfj = 0;
+  }
 }

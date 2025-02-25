@@ -42,7 +42,7 @@ int main(void) {
 }
 
 void DMA2_Stream0_IRQHandler(void) {
-  if (dma_irq_handling(DMA2, 0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
+  if (dma_irq_handling(DMA2_Stream0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
     uint16_t val1 = dual_var[0] & 0xFFFF;
     uint16_t val2 = (dual_var[0] >> 16) & 0xFFFF;
     uint32_t set_breakpoint_here = (val1 << 16) + val2;

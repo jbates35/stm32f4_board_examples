@@ -60,7 +60,7 @@ int main(void) {
 }
 
 void DMA2_Stream0_IRQHandler(void) {
-  if (dma_irq_handling(DMA2, 0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
+  if (dma_irq_handling(DMA2_Stream0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
     uint16_t temp_adc_val = adc_arr[2];
     float temp = convert_adc_to_temperature(temp_adc_val, ADC_RESOLUTION_12_BIT);
     float set_breakpoint_here = temp;

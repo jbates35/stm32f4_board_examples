@@ -15,8 +15,10 @@
   } while (0)
 
 /******* PINS *********/
-#define LED_GREEN_PORT GPIOC
-#define LED_GREEN_PIN 0
+#define GPIO_GREEN_LED_PORT GPIOC
+#define GPIO_GREEN_LED_PIN 0
+#define GPIO_BLUE_LED_PORT GPIOB
+#define GPIO_BLUE_LED_PIN 0
 
 #define USER_PBUTTON_PORT GPIOC
 #define USER_PBUTTON_PIN 13
@@ -82,15 +84,24 @@ float read_temperature();
 int timer_irq_handling(TIM_TypeDef *timer, const uint8_t channel);
 
 static inline void setup_gpio() {
-  // Green LED for PA5 (on nucleo board)
-  GPIO_peri_clock_control(LED_GREEN_PORT, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t led_green_handler = {.p_GPIO_addr = LED_GREEN_PORT,
+  GPIOHandle_t led_blue_handler = {.cfg = {.mode = GPIO_MODE_OUT,
+                                           .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                           .speed = GPIO_SPEED_MEDIUM,
+                                           .pin_number = GPIO_BLUE_LED_PIN
+
+                                   },
+                                   .p_GPIO_addr = GPIO_BLUE_LED_PORT};
+  GPIO_init(&led_blue_handler);
+  GPIO_set_output(GPIO_BLUE_LED_PORT, GPIO_BLUE_LED_PIN, 0);
+
+  GPIO_peri_clock_control(GPIO_GREEN_LED_PORT, GPIO_CLOCK_ENABLE);
+  GPIOHandle_t led_green_handler = {.p_GPIO_addr = GPIO_GREEN_LED_PORT,
                                     .cfg = {.mode = GPIO_MODE_OUT,
-                                            .pin_number = LED_GREEN_PIN,
+                                            .pin_number = GPIO_GREEN_LED_PIN,
                                             .speed = GPIO_SPEED_LOW,
-                                            .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                            .float_resistor = GPIO_PUPDR_NONE}};
+                                            .output_type = GPIO_OP_TYPE_PUSHPULL}};
   GPIO_init(&led_green_handler);
+  GPIO_set_output(GPIO_GREEN_LED_PORT, GPIO_GREEN_LED_PIN, 0);
 
   // User button on PC13, attached to a falling edge interrupt IRQ
   GPIO_peri_clock_control(USER_PBUTTON_PORT, GPIO_CLOCK_ENABLE);

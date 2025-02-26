@@ -38,7 +38,7 @@
 #endif
 
 #define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b111
+#define SPI_BAUD_RATE 0b10
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
@@ -46,9 +46,6 @@
 #define SPI_GPIO_MOSI_PIN 7
 
 #define DMA_SPI_STREAM DMA2_Stream5
-
-#define SPI_GPIO_MANUAL_NSS_PORT GPIOB
-#define SPI_GPIO_MANUAL_NSS_PIN 0
 
 void spi_master_setup_test();
 void spi_tx_in_for_loop();
@@ -66,27 +63,34 @@ char dma_tx_str[17];
 
 int main(void) {
   setup_gpio();
-  spi_master_setup_dma_test(dma_tx_str, SIZEOF(dma_tx_str));
+  spi_master_setup_test();
 
-  memset(&dma_tx_str, 0, SIZEOF(dma_tx_str));
-  char test_str[] = "asdfjkl lkjfdsa";
-  int len = SIZEOF(test_str);
-  dma_tx_str[0] = (char)len;
-  strcat(dma_tx_str, test_str);
-
-  /* Loop forever */
   for (;;) {
-    int asdf = 0;
-    for (int i = 0; i < 3; i++) WAIT(SLOW);
   }
 }
 
 void EXTI15_10_IRQHandler(void) {
-  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
-    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
+  static uint8_t method_num = 0;
 
-    int asdfj = 0;
+  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
+    char led_on[] = "P 91";
+    char led_off[] = "P 90";
+    char sensor_read[] = "Q0";
+
+    switch (method_num) {
+      case 0:
+        spi_tx_word(SPI1, (const uint8_t *)led_on, SIZEOF(led_on));
+        break;
+      case 1:
+        // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read));
+        break;
+      case 2:
+        spi_tx_word(SPI1, (const uint8_t *)led_off, SIZEOF(led_off));
+        break;
+    }
+
+    method_num++;
+    method_num = method_num % 3;
   }
 }
 
@@ -118,14 +122,6 @@ void spi_master_setup_test() {
   GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
   spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
   GPIO_init(&spi_gpio_nss_handle);
-
-  GPIOHandle_t manual_nss = {.cfg = {.pin_number = SPI_GPIO_MANUAL_NSS_PIN,
-                                     .mode = GPIO_MODE_OUT,
-                                     .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                     .speed = GPIO_SPEED_MEDIUM},
-                             .p_GPIO_addr = SPI_GPIO_MANUAL_NSS_PORT};
-  GPIO_peri_clock_control(SPI_GPIO_MANUAL_NSS_PORT, GPIO_PERI_CLOCK_ENABLE);
-  GPIO_init(&manual_nss);
 
   // 2.Write to the SPI_CR1 register:
   // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
@@ -248,15 +244,18 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
     uint16_t rx_byte = 0;
     while (spi_rx_byte(spi_port, &rx_byte));
 
-    if (dff_bytes == 1)
+    uint8_t bytes_given;
+    if (dff_bytes == 1 || len == 1) {
       *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
-    else {
+      bytes_given = 1;
+    } else {
       *((uint16_t *)rx_buffer) = rx_byte;
+      bytes_given = 2;
     }
 
     // Move buffer along to the next available frame
-    rx_buffer += dff_bytes;
-    len -= dff_bytes;
+    rx_buffer += bytes_given;
+    len -= bytes_given;
   }
 
   return 0;
@@ -309,9 +308,12 @@ void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
 
 void spi_master_dma_exti_handler() {
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    GPIO_toggle_output(LED_GREEN_PORT, LED_GREEN_PIN);
-    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
+    memset(&dma_tx_str, 0, SIZEOF(dma_tx_str));
+    char test_str[] = "asdfjkl lkjfdsa";
+    int len = SIZEOF(test_str);
+    dma_tx_str[0] = (char)len;
+    strcat(dma_tx_str, test_str);
 
-    int asdfj = 0;
+    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
   }
 }

@@ -54,7 +54,7 @@ int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
 int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
-int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len);
+int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
@@ -77,17 +77,24 @@ void EXTI15_10_IRQHandler(void) {
     char led_off[] = "P 90";
     char sensor_read[] = "Q0";
 
-    switch (method_num) {
-      case 0:
-        spi_tx_word(SPI1, (const uint8_t *)led_on, SIZEOF(led_on));
-        break;
-      case 1:
-        // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read));
-        break;
-      case 2:
-        spi_tx_word(SPI1, (const uint8_t *)led_off, SIZEOF(led_off));
-        break;
-    }
+    uint8_t rx_word[255];
+    memset(&rx_word, '\0', 255);
+
+    spi_rx_word(SPI1, (const uint8_t *)rx_word, 5);
+    // switch (method_num) {
+    //   case 0:
+    //     spi_tx_word(SPI1, (const uint8_t *)led_on, SIZEOF(led_on) - 1);
+    //     spi_rx_word(SPI1, (const uint8_t *)rx_word, 1);
+    //     break;
+    //   case 1:
+    //     // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
+    //     break;
+    //   case 2:
+    //     spi_tx_word(SPI1, (const uint8_t *)led_off, SIZEOF(led_off) - 1);
+    //     spi_rx_word(SPI1, (const uint8_t *)rx_word, 1);
+    //     break;
+    // }
+    // printf("%d", (int)rx_word[0]);
 
     method_num++;
     method_num = method_num % 3;
@@ -229,12 +236,13 @@ void spi_tx_in_for_loop() {
 
 int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte) {
   if (spi_port == NULL) return -1;
-  if (!(spi_port->SR & (1 << SPI_SR_RXNE))) return 1;
+  spi_port->DR = 0;  // Dummy bit so clock can activate
+  while (!(spi_port->SR & (1 << SPI_SR_RXNE_Pos)));
   *rx_byte = spi_port->DR;
   return 0;
 }
 
-int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
+int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len) {
   if (spi_port == NULL) return -1;
 
   // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
@@ -242,7 +250,7 @@ int spi_rx_word(SPI_TypeDef *spi_port, const uint8_t *rx_buffer, uint16_t len) {
 
   while (len > 0) {
     uint16_t rx_byte = 0;
-    while (spi_rx_byte(spi_port, &rx_byte));
+    spi_rx_byte(spi_port, &rx_byte);
 
     uint8_t bytes_given;
     if (dff_bytes == 1 || len == 1) {

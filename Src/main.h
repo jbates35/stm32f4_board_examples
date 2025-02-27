@@ -134,3 +134,10 @@ static inline void setup_meas_gpio() {
                               }};
   GPIO_init(&sig_handler);
 }
+int _write(int le, char *ptr, int len) {
+  int DataIdx;
+  for (DataIdx = 0; DataIdx < len; DataIdx++) {
+    ITM_SendChar(*ptr++);
+  }
+  return len;
+}

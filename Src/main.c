@@ -38,7 +38,7 @@
 #endif
 
 #define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b10
+#define SPI_BAUD_RATE 0b101
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
@@ -59,6 +59,8 @@ int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len);
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
 
+void talk_to_arduino();
+
 char dma_tx_str[17];
 
 int main(void) {
@@ -66,39 +68,54 @@ int main(void) {
   spi_master_setup_test();
 
   for (;;) {
+    talk_to_arduino();
+    WAIT(SLOW);
   }
 }
 
 void EXTI15_10_IRQHandler(void) {
-  static uint8_t method_num = 0;
-
   if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    char led_on[] = "P 91";
-    char led_off[] = "P 90";
-    char sensor_read[] = "Q0";
-
-    uint8_t rx_word[255];
-    memset(&rx_word, '\0', 255);
-
-    spi_rx_word(SPI1, (const uint8_t *)rx_word, 5);
-    // switch (method_num) {
-    //   case 0:
-    //     spi_tx_word(SPI1, (const uint8_t *)led_on, SIZEOF(led_on) - 1);
-    //     spi_rx_word(SPI1, (const uint8_t *)rx_word, 1);
-    //     break;
-    //   case 1:
-    //     // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
-    //     break;
-    //   case 2:
-    //     spi_tx_word(SPI1, (const uint8_t *)led_off, SIZEOF(led_off) - 1);
-    //     spi_rx_word(SPI1, (const uint8_t *)rx_word, 1);
-    //     break;
-    // }
-    // printf("%d", (int)rx_word[0]);
-
-    method_num++;
-    method_num = method_num % 3;
+    talk_to_arduino();
   }
+}
+
+void talk_to_arduino() {
+  static uint8_t method_num = 0;
+  char led_on[] = "P 91";
+  char led_off[] = "P 90";
+  char sensor_read[] = "Q0";
+
+  char len_led_on = SIZEOF(led_on) - 1;
+  char len_led_off = SIZEOF(led_off) - 1;
+  char len_sensor_read = SIZEOF(sensor_read) - 1;
+
+  uint8_t ack_byte[2] = {0};
+  uint8_t rx_word[255] = {0};
+
+  switch (method_num) {
+    case 0:
+      spi_tx_word(SPI1, (const uint8_t *)&led_on[0], 1);
+      spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_on[1], 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_on[2], 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_on[3], 1);
+      break;
+    case 1:
+      // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
+      break;
+    case 2:
+      spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
+      spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
+      spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
+      break;
+  }
+  printf("%s\n", ack_byte);
+  printf("%s\n\n", rx_word);
+
+  method_num++;
+  method_num = method_num % 3;
 }
 
 void spi_master_setup_test() {

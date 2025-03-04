@@ -47,13 +47,26 @@
 
 #define DMA_SPI_STREAM DMA2_Stream5
 
+#define NACK 0xA5
+#define ACK 0xF5
+
+//command codes
+#define COMMAND_LED_CTRL 0x50
+#define COMMAND_SENSOR_READ 0x51
+#define COMMAND_LED_READ 0x52
+#define COMMAND_PRINT 0x53
+#define COMMAND_ID_READ 0x54
+
+#define LED_ON 1
+#define LED_OFF 0
+
 void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
 int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
 int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 
-int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte);
+uint16_t spi_rx_byte(SPI_TypeDef *spi_port);
 int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
@@ -89,29 +102,30 @@ void talk_to_arduino() {
   char len_led_off = SIZEOF(led_off) - 1;
   char len_sensor_read = SIZEOF(sensor_read) - 1;
 
-  uint8_t ack_byte[2] = {0};
+  uint8_t ack_byte;
   uint8_t rx_word[255] = {0};
-
+  uint8_t args[2];
   switch (method_num) {
     case 0:
-      spi_tx_word(SPI1, (const uint8_t *)&led_on[0], 1);
-      spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_on[1], 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_on[2], 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_on[3], 1);
+      args[0] = 9;       // pin
+      args[1] = LED_ON;  // command val
+      spi_tx_byte(SPI1, COMMAND_LED_CTRL);
+      spi_tx_byte(SPI1, 0xFF);
+      ack_byte = (uint8_t)spi_rx_byte(SPI1);
+      spi_tx_word(SPI1, args, 2);
       break;
     case 1:
       // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
       break;
     case 2:
-      spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
-      spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
-      spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
+      // spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
+      // spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
+      // spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
+      // spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
+      // spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
       break;
   }
-  printf("%s\n", ack_byte);
+  printf("%c\n", ack_byte);
   printf("%s\n\n", rx_word);
 
   method_num++;
@@ -251,12 +265,17 @@ void spi_tx_in_for_loop() {
   }
 }
 
-int spi_rx_byte(SPI_TypeDef *spi_port, uint16_t *rx_byte) {
-  if (spi_port == NULL) return -1;
-  spi_port->DR = 0;  // Dummy bit so clock can activate
+uint16_t spi_rx_byte(SPI_TypeDef *spi_port) {
+  if (spi_port == NULL) return;
+
+  // Byte(s) which will be returned
+  uint16_t rx_byte = 0;
+
+  // Put dummy word so clock can activate
+  spi_port->DR = 0xFFFF;
+
   while (!(spi_port->SR & (1 << SPI_SR_RXNE_Pos)));
-  *rx_byte = spi_port->DR;
-  return 0;
+  return spi_port->DR;
 }
 
 int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len) {
@@ -266,8 +285,7 @@ int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len) {
   uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
 
   while (len > 0) {
-    uint16_t rx_byte = 0;
-    spi_rx_byte(spi_port, &rx_byte);
+    uint16_t rx_byte = spi_rx_byte(spi_port);
 
     uint8_t bytes_given;
     if (dff_bytes == 1 || len == 1) {

@@ -68,11 +68,13 @@ int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
 
 uint16_t spi_rx_byte(SPI_TypeDef *spi_port);
 int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len);
+int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
 
 void talk_to_arduino();
+int talk_to_mcp3008(int channel);
 
 char dma_tx_str[17];
 
@@ -81,8 +83,8 @@ int main(void) {
   spi_master_setup_test();
 
   for (;;) {
-    talk_to_arduino();
-    WAIT(SLOW);
+    talk_to_mcp3008(0);
+    WAIT(FAST);
   }
 }
 
@@ -130,6 +132,22 @@ void talk_to_arduino() {
 
   method_num++;
   method_num = method_num % 3;
+}
+
+int talk_to_mcp3008(int channel) {
+  uint8_t rx_bytes[3] = {0};
+  uint8_t tx_bytes[3] = {0};
+
+  // Look to mcp3008 for pattern needed to be sent
+  tx_bytes[0] = 1;
+  tx_bytes[1] = (1 << 7) | ((channel & 0b111) << 6);
+
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+  spi_full_duplex_transfer(SPI1, tx_bytes, rx_bytes, 3);
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+
+  int adc_val = (rx_bytes[1] & 0b11) << 8 | rx_bytes[2];
+  return adc_val;
 }
 
 void spi_master_setup_test() {
@@ -266,13 +284,7 @@ void spi_tx_in_for_loop() {
 }
 
 uint16_t spi_rx_byte(SPI_TypeDef *spi_port) {
-  if (spi_port == NULL) return;
-
-  // Byte(s) which will be returned
-  uint16_t rx_byte = 0;
-
-  // Put dummy word so clock can activate
-  spi_port->DR = 0xFFFF;
+  if (spi_port == NULL) return 0;
 
   while (!(spi_port->SR & (1 << SPI_SR_RXNE_Pos)));
   return spi_port->DR;
@@ -315,6 +327,52 @@ void spi_rx_in_for_loop() {
     // while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
     // rx_byte = SPI_PORT->DR;
     // ITM_SendChar(rx_byte);
+  }
+}
+
+int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len) {
+  if (spi_port == NULL) return -1;
+
+  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
+  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
+
+  while (len > 0) {
+    // Prepare the tx part of the transmission
+    uint16_t tx_word = 0;
+    if (dff_bytes == 1)
+      tx_word = *((uint8_t *)tx_buffer);
+    else {
+      tx_word = *((uint16_t *)tx_buffer);
+      if (len == 1) tx_word &= 0xFF00;
+    }
+
+    // Send byte
+    spi_tx_byte(spi_port, tx_word);
+
+    // Prepare the rx part of the transmission and receive bytes
+    uint16_t rx_byte = spi_rx_byte(spi_port);
+
+    if (dff_bytes == 1 || len == 1)
+      *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
+    else
+      *((uint16_t *)rx_buffer) = rx_byte;
+
+    // Move buffer along to the next available frame
+    tx_buffer = (uint8_t *)tx_buffer + dff_bytes;
+    rx_buffer = (uint8_t *)rx_buffer + dff_bytes;
+    len -= dff_bytes;
+  }
+
+  return 0;
+}
+
+void full_duplex_transfer_example_code() {
+  setup_gpio();
+  spi_master_setup_test();
+
+  for (;;) {
+    talk_to_mcp3008(0);
+    WAIT(FAST);
   }
 }
 

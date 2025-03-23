@@ -38,13 +38,15 @@
 #endif
 
 #define SPI_PORT SPI1
-#define SPI_BAUD_RATE 0b101
+#define SPI_BAUD_RATE 0b011
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
 
+#define SPI_GPIO_NSS_PORT GPIOB
+#define SPI_GPIO_NSS_PIN 6
 #define DMA_SPI_STREAM DMA2_Stream5
 
 #define NACK 0xA5
@@ -158,6 +160,7 @@ void spi_master_setup_test() {
 
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
   GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_peri_clock_control(SPI_GPIO_NSS_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
                                    .speed = GPIO_SPEED_HIGH,
                                    .float_resistor = GPIO_PUPDR_NONE,
@@ -175,9 +178,12 @@ void spi_master_setup_test() {
   spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
   GPIO_init(&spi_gpio_mosi_handle);
 
-  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_NSS_PORT, .cfg = default_gpio_cfg};
   spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
+  spi_gpio_nss_handle.cfg.alt_func_num = 0;
+  spi_gpio_nss_handle.cfg.mode = GPIO_MODE_OUT;
   GPIO_init(&spi_gpio_nss_handle);
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
 
   // 2.Write to the SPI_CR1 register:
   // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).

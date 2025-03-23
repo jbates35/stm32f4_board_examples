@@ -39,8 +39,8 @@
 
 #define SPI_PORT SPI1
 #define SPI_BAUD_RATE 0b011
+
 #define SPI_GPIO_PORT GPIOA
-#define SPI_GPIO_NSS_PIN 4
 #define SPI_GPIO_CLK_PIN 5
 #define SPI_GPIO_MISO_PIN 6
 #define SPI_GPIO_MOSI_PIN 7
@@ -66,10 +66,11 @@ void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
 int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len);
+int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, int len);
 
 uint16_t spi_rx_byte(SPI_TypeDef *spi_port);
-int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len);
+int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len);
+
 int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len);
 
 void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
@@ -248,7 +249,7 @@ int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte) {
   return 0;
 }
 
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, uint16_t len) {
+int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, int len) {
   if (spi_port == NULL) return -1;
 
   // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
@@ -296,7 +297,7 @@ uint16_t spi_rx_byte(SPI_TypeDef *spi_port) {
   return spi_port->DR;
 }
 
-int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len) {
+int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len) {
   if (spi_port == NULL) return -1;
 
   // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
@@ -308,7 +309,6 @@ int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, uint16_t len) {
     uint8_t bytes_given;
     if (dff_bytes == 1 || len == 1) {
       *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
-      bytes_given = 1;
     } else {
       *((uint16_t *)rx_buffer) = rx_byte;
       bytes_given = 2;

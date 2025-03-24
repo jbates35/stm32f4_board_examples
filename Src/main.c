@@ -47,7 +47,18 @@
 
 #define SPI_GPIO_NSS_PORT GPIOB
 #define SPI_GPIO_NSS_PIN 6
+
 #define DMA_SPI_STREAM DMA2_Stream5
+
+//command codes
+#define COMMAND_LED_CTRL 0x50
+#define COMMAND_SENSOR_READ 0x51
+#define COMMAND_LED_READ 0x52
+#define COMMAND_PRINT 0x53
+#define COMMAND_ID_READ 0x54
+
+#define LED_ON 1
+#define LED_OFF 0
 
 #define NACK 0xA5
 #define ACK 0xF5
@@ -61,7 +72,6 @@
 
 #define LED_ON 1
 #define LED_OFF 0
-
 void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
@@ -86,8 +96,8 @@ int main(void) {
   spi_master_setup_test();
 
   for (;;) {
-    talk_to_mcp3008(0);
-    WAIT(FAST);
+    talk_to_arduino();
+    WAIT(SLOW);
   }
 }
 
@@ -98,44 +108,104 @@ void EXTI15_10_IRQHandler(void) {
 }
 
 void talk_to_arduino() {
+  /*
+
+     Alright, I had the hardest time with this function.
+     - We actually have to use full duplex mode. This is why I wasn't making it work.
+     - The Arduino script is meant to simulataneously send tx bytes and rx bytes.
+     - Look at the code from the arduino's standpoint and see where it wants to do a transmit and a receive at the same time
+     - I'll keep the commented out version of this function below to show how NOT to do it
+
+   */
+
   static uint8_t method_num = 0;
-  char led_on[] = "P 91";
-  char led_off[] = "P 90";
-  char sensor_read[] = "Q0";
 
-  char len_led_on = SIZEOF(led_on) - 1;
-  char len_led_off = SIZEOF(led_off) - 1;
-  char len_sensor_read = SIZEOF(sensor_read) - 1;
+  uint8_t cmd_tx_bytes[2] = {0xFF, 2};
+  uint8_t cmd_rx_bytes[2] = {0};
 
-  uint8_t ack_byte;
-  uint8_t rx_word[255] = {0};
-  uint8_t args[2];
+  uint8_t sig_tx_bytes[2] = {0};
+  uint8_t sig_rx_bytes[2] = {0};
+
   switch (method_num) {
     case 0:
-      args[0] = 9;       // pin
-      args[1] = LED_ON;  // command val
-      spi_tx_byte(SPI1, COMMAND_LED_CTRL);
-      spi_tx_byte(SPI1, 0xFF);
-      ack_byte = (uint8_t)spi_rx_byte(SPI1);
-      spi_tx_word(SPI1, args, 2);
+      cmd_tx_bytes[0] = COMMAND_LED_CTRL;
+      sig_tx_bytes[0] = 9;
+      sig_tx_bytes[1] = 1;
       break;
     case 1:
-      // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
+      cmd_tx_bytes[0] = COMMAND_SENSOR_READ;
       break;
     case 2:
-      // spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
-      // spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
-      // spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
-      // spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
-      // spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
+      cmd_tx_bytes[0] = COMMAND_LED_CTRL;
+      sig_tx_bytes[0] = 9;
+      sig_tx_bytes[1] = 0;
       break;
   }
-  printf("%c\n", ack_byte);
-  printf("%s\n\n", rx_word);
 
-  method_num++;
-  method_num = method_num % 3;
+  // Send dat data
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+
+  spi_full_duplex_transfer(SPI1, cmd_tx_bytes, cmd_rx_bytes, 2);
+
+  if (cmd_rx_bytes[1] == ACK) {
+    spi_full_duplex_transfer(SPI1, &sig_tx_bytes[0], &sig_rx_bytes[0], 1);
+    WAIT(FAST);  // Needed for the amount of time Arduino needs to have to sample the  ADC val
+    spi_full_duplex_transfer(SPI1, &sig_tx_bytes[1], &sig_rx_bytes[1], 1);
+  }
+
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+
+  uint8_t sensor_read = sig_rx_bytes[1];
+  if (method_num == 1) printf("Result of sensor read: %d\n", sensor_read);
+
+  method_num = (method_num + 1) % 3;
 }
+//
+// void talk_to_arduino() {
+//   static uint8_t method_num = 0;
+//   char led_on[] = "P 91";
+//   char led_off[] = "P 90";
+//   char sensor_read[] = "Q0";
+//
+//   char len_led_on = SIZEOF(led_on) - 1;
+//   char len_led_off = SIZEOF(led_off) - 1;
+//   char len_sensor_read = SIZEOF(sensor_read) - 1;
+//
+//   uint8_t ack_byte;
+//   uint8_t rx_word[255] = {0};
+//   uint8_t args[2];
+//
+//   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+//   switch (method_num) {
+//     case 0:
+//       args[0] = 9;       // pin
+//       args[1] = LED_ON;  // command val
+//       spi_tx_byte(SPI1, COMMAND_LED_CTRL);
+//       ack_byte = (uint8_t)spi_rx_byte(SPI1);
+//       spi_tx_byte(SPI1, 0xFF);
+//       // spi_tx_word(SPI1, args, 2);
+//       spi_tx_byte(SPI1, 0x9);
+//       spi_tx_byte(SPI1, 0x1);
+//       break;
+//     case 1:
+//       // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
+//       break;
+//     case 2:
+//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
+//       // spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
+//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
+//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
+//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
+//       break;
+//   }
+//   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+//
+//   // printf("%c\n", ack_byte);
+//   // printf("%s\n\n", rx_word);
+//
+//   method_num++;
+//   method_num = method_num % 3;
+// }
 
 int talk_to_mcp3008(int channel) {
   uint8_t rx_bytes[3] = {0};

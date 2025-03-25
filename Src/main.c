@@ -48,7 +48,8 @@
 #define SPI_GPIO_NSS_PORT GPIOB
 #define SPI_GPIO_NSS_PIN 6
 
-#define DMA_SPI_STREAM DMA2_Stream5
+#define DMA_SPI_TX_STREAM DMA2_Stream3
+#define DMA_SPI_RX_STREAM DMA2_Stream2
 
 //command codes
 #define COMMAND_LED_CTRL 0x50
@@ -83,20 +84,23 @@ int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len);
 
 int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len);
 
-void spi_master_setup_dma_test(char *in_arr, uint16_t elements);
+void spi_master_setup_dma_test(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
 
+void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr);
 void talk_to_arduino();
 int talk_to_mcp3008(int channel);
 
 char dma_tx_str[17];
+uint8_t ard_dma_tx[4];
+uint8_t ard_dma_rx[4];
 
 int main(void) {
   setup_gpio();
-  spi_master_setup_test();
+  spi_master_setup_dma_test(ard_dma_tx, ard_dma_rx, 4);
 
   for (;;) {
-    talk_to_arduino();
+    talk_to_arduino_dma(ard_dma_tx, ard_dma_rx);
     WAIT(SLOW);
   }
 }
@@ -348,10 +352,10 @@ void full_duplex_transfer_example_code() {
   }
 }
 
-void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
+void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elements) {
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t spi_dma_tx_handle = {
-      .cfg = {.in = {.addr = (uintptr_t)in_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+      .cfg = {.in = {.addr = (uintptr_t)tx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .out = {.addr = (uintptr_t)&SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
               .mem_data_size = DMA_DATA_SIZE_8_BIT,
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
@@ -368,15 +372,75 @@ void spi_master_setup_dma_test(char *in_arr, uint16_t elements) {
                       .half_transfer = DMA_INTERRUPT_DISABLE,
                   },
               .start_enabled = DMA_START_DISABLED},
-      .p_stream_addr = DMA_SPI_STREAM};
+      .p_stream_addr = DMA_SPI_TX_STREAM};
   dma_stream_init(&spi_dma_tx_handle);
+
+  DMAHandle_t spi_dma_rx_handle = {
+      .cfg = {.in = {.addr = (uintptr_t)&SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uintptr_t)rx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .mem_data_size = DMA_DATA_SIZE_8_BIT,
+              .peri_data_size = DMA_DATA_SIZE_8_BIT,
+              .dma_elements = elements,
+              .channel = 3,
+              .priority = DMA_PRIORITY_MAX,
+              .circ_buffer = DMA_BUFFER_FINITE,
+              .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
+              .interrupt_en =
+                  {
+                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
+                      .transfer_error = DMA_INTERRUPT_DISABLE,
+                      .full_transfer = DMA_INTERRUPT_DISABLE,
+                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                  },
+              .start_enabled = DMA_START_ENABLED},
+      .p_stream_addr = DMA_SPI_RX_STREAM};
+  dma_stream_init(&spi_dma_rx_handle);
+  dma_peri_clock_control(DMA2, 1);
 
   spi_master_setup_test();
 
   SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
   SPI_PORT->CR2 |= (1 << SPI_CR2_TXDMAEN_Pos);
+  SPI_PORT->CR2 |= (1 << SPI_CR2_RXDMAEN_Pos);
 
   SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
+}
+
+void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr) {
+  static uint8_t method_num = 0;
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+
+  tx_arr[1] = 2;
+  if (method_num == 0 || method_num == 2)
+    tx_arr[0] = COMMAND_LED_CTRL;
+  else if (method_num == 1)
+    tx_arr[0] = COMMAND_SENSOR_READ;
+
+  WAIT(FAST);
+
+  dma_start_transfer(DMA_SPI_TX_STREAM, 2);
+  int breakpoint1 = 0;
+
+  if (rx_arr[1] == ACK) {
+    if (method_num == 0) {
+      tx_arr[0] = 9;
+      tx_arr[1] = 1;
+      dma_start_transfer(DMA_SPI_TX_STREAM, 2);
+    } else if (method_num == 1) {
+      tx_arr[0] = 0;
+      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
+      WAIT(FAST);
+      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
+      printf("Result of sensor read: %d\n", rx_arr[3]);
+    } else if (method_num == 2) {
+      tx_arr[0] = 9;
+      tx_arr[1] = 0;
+      dma_start_transfer(DMA_SPI_TX_STREAM, 2);
+    }
+  }
+
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+  method_num = (method_num + 1) % 3;
 }
 
 void spi_master_dma_exti_handler() {
@@ -387,6 +451,6 @@ void spi_master_dma_exti_handler() {
     dma_tx_str[0] = (char)len;
     strcat(dma_tx_str, test_str);
 
-    dma_start_transfer(DMA_SPI_STREAM, SIZEOF(dma_tx_str));
+    dma_start_transfer(DMA_SPI_TX_STREAM, SIZEOF(dma_tx_str));
   }
 }

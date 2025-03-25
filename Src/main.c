@@ -76,7 +76,7 @@ void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
 int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, int len);
+int spi_tx_word(SPI_TypeDef *spi_port, const void *tx_buffer, int len);
 
 uint16_t spi_rx_byte(SPI_TypeDef *spi_port);
 int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len);
@@ -108,16 +108,6 @@ void EXTI15_10_IRQHandler(void) {
 }
 
 void talk_to_arduino() {
-  /*
-
-     Alright, I had the hardest time with this function.
-     - We actually have to use full duplex mode. This is why I wasn't making it work.
-     - The Arduino script is meant to simulataneously send tx bytes and rx bytes.
-     - Look at the code from the arduino's standpoint and see where it wants to do a transmit and a receive at the same time
-     - I'll keep the commented out version of this function below to show how NOT to do it
-
-   */
-
   static uint8_t method_num = 0;
 
   uint8_t cmd_tx_bytes[2] = {0xFF, 2};
@@ -160,52 +150,16 @@ void talk_to_arduino() {
 
   method_num = (method_num + 1) % 3;
 }
-//
-// void talk_to_arduino() {
-//   static uint8_t method_num = 0;
-//   char led_on[] = "P 91";
-//   char led_off[] = "P 90";
-//   char sensor_read[] = "Q0";
-//
-//   char len_led_on = SIZEOF(led_on) - 1;
-//   char len_led_off = SIZEOF(led_off) - 1;
-//   char len_sensor_read = SIZEOF(sensor_read) - 1;
-//
-//   uint8_t ack_byte;
-//   uint8_t rx_word[255] = {0};
-//   uint8_t args[2];
-//
-//   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-//   switch (method_num) {
-//     case 0:
-//       args[0] = 9;       // pin
-//       args[1] = LED_ON;  // command val
-//       spi_tx_byte(SPI1, COMMAND_LED_CTRL);
-//       ack_byte = (uint8_t)spi_rx_byte(SPI1);
-//       spi_tx_byte(SPI1, 0xFF);
-//       // spi_tx_word(SPI1, args, 2);
-//       spi_tx_byte(SPI1, 0x9);
-//       spi_tx_byte(SPI1, 0x1);
-//       break;
-//     case 1:
-//       // spi_tx_word(SPI1, (const uint8_t *)sensor_read, SIZEOF(sensor_read) - 1);
-//       break;
-//     case 2:
-//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[0], 1);
-//       // spi_rx_word(SPI1, (uint8_t *)ack_byte, 1);
-//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[1], 1);
-//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[2], 1);
-//       // spi_tx_word(SPI1, (const uint8_t *)&led_off[3], 1);
-//       break;
-//   }
-//   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-//
-//   // printf("%c\n", ack_byte);
-//   // printf("%s\n\n", rx_word);
-//
-//   method_num++;
-//   method_num = method_num % 3;
-// }
+
+int full_duplex_arduino_main_func() {
+  setup_gpio();
+  spi_master_setup_test();
+
+  for (;;) {
+    talk_to_arduino();
+    WAIT(SLOW);
+  }
+}
 
 int talk_to_mcp3008(int channel) {
   uint8_t rx_bytes[3] = {0};
@@ -319,32 +273,8 @@ int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte) {
   return 0;
 }
 
-int spi_tx_word(SPI_TypeDef *spi_port, const uint8_t *tx_buffer, int len) {
-  if (spi_port == NULL) return -1;
-
-  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
-  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
-
-  while (len > 0) {
-    // Get the next frame available
-    uint16_t tx_word = 0;
-    if (dff_bytes == 1)
-      tx_word = *((uint8_t *)tx_buffer);
-    else {
-      tx_word = *((uint16_t *)tx_buffer);
-      if (len == 1) tx_word &= 0xFF00;
-    }
-
-    // Send byte
-    int result = spi_tx_byte(spi_port, tx_word);
-    if (result != 0) return result;
-
-    // Move buffer along to the next available frame
-    tx_buffer += dff_bytes;
-    len -= dff_bytes;
-  }
-
-  return 0;
+int spi_tx_word(SPI_TypeDef *spi_port, const void *tx_buffer, int len) {
+  return spi_full_duplex_transfer(spi_port, (void *)tx_buffer, (void *)tx_buffer, len);
 }
 
 void spi_tx_in_for_loop() {
@@ -363,47 +293,13 @@ void spi_tx_in_for_loop() {
 uint16_t spi_rx_byte(SPI_TypeDef *spi_port) {
   if (spi_port == NULL) return 0;
 
+  // Wait until the rx is empty
   while (!(spi_port->SR & (1 << SPI_SR_RXNE_Pos)));
   return spi_port->DR;
 }
 
 int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len) {
-  if (spi_port == NULL) return -1;
-
-  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
-  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
-
-  while (len > 0) {
-    uint16_t rx_byte = spi_rx_byte(spi_port);
-
-    uint8_t bytes_given;
-    if (dff_bytes == 1 || len == 1) {
-      *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
-    } else {
-      *((uint16_t *)rx_buffer) = rx_byte;
-      bytes_given = 2;
-    }
-
-    // Move buffer along to the next available frame
-    rx_buffer += bytes_given;
-    len -= bytes_given;
-  }
-
-  return 0;
-}
-
-void spi_rx_in_for_loop() {
-  setup_gpio();
-  spi_master_setup_test();
-
-  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
-  int len = SIZEOF(test_str);
-  for (;;) {
-    // uint16_t rx_byte = 0;
-    // while (!(SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos)));
-    // rx_byte = SPI_PORT->DR;
-    // ITM_SendChar(rx_byte);
-  }
+  return spi_full_duplex_transfer(spi_port, rx_buffer, rx_buffer, len);
 }
 
 int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len) {

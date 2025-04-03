@@ -84,7 +84,7 @@ void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr);
 void talk_to_arduino();
 int talk_to_mcp3008(int channel);
 
-int talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr);
+void talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr);
 
 char dma_tx_str[17];
 uint8_t ard_dma_tx[4];
@@ -93,16 +93,19 @@ uint8_t mcp3008_dma_tx[4];
 uint8_t mcp3008_dma_rx[4];
 
 int main(void) {
-  /* setup_gpio();
+  setup_gpio();
   spi_master_setup_dma_test(mcp3008_dma_tx, mcp3008_dma_rx, 3);
 
   for (;;) {
-    for (uint8_t channel = 0; channel < 2; channel++) talk_to_mcp3008_dma(channel, mcp3008_dma_tx, mcp3008_dma_rx);
+    for (uint8_t channel = 1; channel < 2; channel++) talk_to_mcp3008_dma(channel, mcp3008_dma_tx, mcp3008_dma_rx);
     WAIT(SLOW);
-  } */
+  }
 
-  setup_gpio();
+  /* setup_gpio();
   spi_master_setup_test();
+
+  WAIT(FAST);
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
 
   for (;;) {
     for (uint8_t channel = 0; channel < 2; channel++) {
@@ -110,7 +113,7 @@ int main(void) {
       WAIT(FAST);
     }
     WAIT(SLOW);
-  }
+  } */
 }
 
 void EXTI15_10_IRQHandler(void) {
@@ -119,6 +122,13 @@ void EXTI15_10_IRQHandler(void) {
   }
 }
 
+void DMA2_Stream2_IRQHandler(void) {
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+  if (dma_irq_handling(DMA_SPI_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
+    int adc_val = (mcp3008_dma_rx[1] & 0b11) << 8 | mcp3008_dma_rx[2];
+    int asdf = 0;
+  }
+}
 void talk_to_arduino() {
   static uint8_t method_num = 0;
 
@@ -242,8 +252,8 @@ void spi_master_setup_test() {
   SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
 
   // f) Configure SSM and SSI (Note: 2).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_SSM_Pos);
-  SPI_PORT->CR1 |= (0 << SPI_CR1_SSI_Pos);
+  SPI_PORT->CR1 |= (1 << SPI_CR1_SSM_Pos);
+  SPI_PORT->CR1 |= (1 << SPI_CR1_SSI_Pos);
 
   // g) Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
   SPI_PORT->CR1 |= (1 << SPI_CR1_MSTR_Pos);
@@ -255,7 +265,7 @@ void spi_master_setup_test() {
 
   // 3:Write to SPI_CR2 register:
   //    a) Configure SSOE (Note: 1 & 2).
-  SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
+  // SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
 
   //    b) Set the FRF bit if the TI protocol is required. Motorola vs TI
   SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
@@ -396,18 +406,21 @@ void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elemen
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = elements,
               .channel = 3,
-              .priority = DMA_PRIORITY_MAX,
+              .priority = DMA_PRIORITY_HIGH,
               .circ_buffer = DMA_BUFFER_FINITE,
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =
                   {
                       .direct_mode_error = DMA_INTERRUPT_DISABLE,
                       .transfer_error = DMA_INTERRUPT_DISABLE,
+                      .full_transfer = DMA_INTERRUPT_ENABLE,
+                      .half_transfer = DMA_INTERRUPT_DISABLE,
                   },
-              .start_enabled = DMA_START_ENABLED},
+              .start_enabled = DMA_START_DISABLED},
       .p_stream_addr = DMA_SPI_RX_STREAM};
   dma_stream_init(&spi_dma_rx_handle);
   dma_peri_clock_control(DMA2, 1);
+  NVIC_EnableIRQ(DMA2_Stream2_IRQn);
 
   spi_master_setup_test();
 
@@ -416,6 +429,12 @@ void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elemen
   SPI_PORT->CR2 |= (1 << SPI_CR2_RXDMAEN_Pos);
 
   SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
+
+  // Biggest reasons for using SPI in DMA mode:
+  // 1.) Tighter timing. There's less CPU load and you'll see clocks that signify continuous transfers
+
+  // Biggest reasons not to:
+  // 1.) It can be hard to time with rxne and what not.
 }
 
 void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr) {
@@ -463,18 +482,17 @@ void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr) {
   method_num = (method_num + 1) % 3;
 }
 
-int talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr) {
+void talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr) {
   // Look to mcp3008 for pattern needed to be sent
   tx_arr[0] = 1;
-  tx_arr[1] = (1 << 7) | ((channel & 0b111) << 6);
+  tx_arr[1] = (1 << 7) | ((channel & 0b111) << 4);
   tx_arr[2] = 0;
 
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-  dma_start_transfer(DMA_SPI_TX_STREAM, 3);
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+  dma_start_transfer(DMA_SPI_RX_STREAM, 3);
 
-  int adc_val = (rx_arr[1] & 0b11) << 8 | rx_arr[2];
-  return adc_val;
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+
+  dma_start_transfer(DMA_SPI_TX_STREAM, 3);
 }
 
 void spi_master_dma_exti_handler() {

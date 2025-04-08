@@ -86,6 +86,8 @@ int talk_to_mcp3008(int channel);
 
 void talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr);
 
+void enable_spi_interrupt(SPI_TypeDef *spi_port);
+
 char dma_tx_str[17];
 uint8_t ard_dma_tx[4];
 uint8_t ard_dma_rx[4];
@@ -505,4 +507,8 @@ void spi_master_dma_exti_handler() {
 
     dma_start_transfer(DMA_SPI_TX_STREAM, SIZEOF(dma_tx_str));
   }
+}
+
+void enable_spi_interrupt(SPI_TypeDef *spi_port) {
+  if (spi_port == NULL) return;
 }

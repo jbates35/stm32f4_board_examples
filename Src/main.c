@@ -32,6 +32,7 @@
 #include "stm32f446xx.h"
 #include "stm32f446xx_dma.h"
 #include "stm32f446xx_gpio.h"
+#include "stm32f446xx_spi.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -95,27 +96,19 @@ uint8_t mcp3008_dma_tx[4];
 uint8_t mcp3008_dma_rx[4];
 
 int main(void) {
-  setup_gpio();
-  spi_master_setup_dma_test(mcp3008_dma_tx, mcp3008_dma_rx, 3);
+  // AFTER THIS, TRY OUT SLAVE MODE
+  // NEED TO ADD DMA
+  // NEED TO GET INTERRUPT GOING
 
-  for (;;) {
-    for (uint8_t channel = 1; channel < 2; channel++) talk_to_mcp3008_dma(channel, mcp3008_dma_tx, mcp3008_dma_rx);
-    WAIT(SLOW);
-  }
-
-  /* setup_gpio();
-  spi_master_setup_test();
-
-  WAIT(FAST);
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-  for (;;) {
-    for (uint8_t channel = 0; channel < 2; channel++) {
-      talk_to_mcp3008(channel);
-      WAIT(FAST);
-    }
-    WAIT(SLOW);
-  } */
+  SPIHandle_t spi_handle = {.p_spi_addr = SPI1,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
+                                    .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
+                                    .device_mode = SPI_DEVICE_MODE_MASTER,
+                                    .dff = SPI_DFF_8_BIT,
+                                    .ssm = SPI_SSM_ENABLE}};
+  spi_init(&spi_handle);
+  for (;;);
+  // START TX AND RX functions
 }
 
 void EXTI15_10_IRQHandler(void) {

@@ -70,13 +70,7 @@
 void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
-int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte);
-int spi_tx_word(SPI_TypeDef *spi_port, const void *tx_buffer, int len);
-
-uint16_t spi_rx_byte(SPI_TypeDef *spi_port);
-int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len);
-
-int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len);
+void spi_driver_setup();
 
 void spi_master_setup_dma_test(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
@@ -100,14 +94,23 @@ int main(void) {
   // NEED TO ADD DMA
   // NEED TO GET INTERRUPT GOING
 
-  SPIHandle_t spi_handle = {.p_spi_addr = SPI1,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
-                                    .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
-                                    .device_mode = SPI_DEVICE_MODE_MASTER,
-                                    .dff = SPI_DFF_8_BIT,
-                                    .ssm = SPI_SSM_ENABLE}};
-  spi_init(&spi_handle);
-  for (;;);
+  spi_driver_setup();
+
+  uint8_t spi_tx_buffer[3];
+  uint8_t spi_rx_buffer[3];
+
+  //Channel 1
+  spi_tx_buffer[0] = 1;
+  spi_tx_buffer[1] = (1 << 7) | (1 << 4);
+
+  for (;;) {
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+    spi_full_duplex_transfer(SPI1, spi_tx_buffer, spi_rx_buffer, 3);
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+    uint16_t adc_val = ((spi_rx_buffer[1] & 3) << 8) | spi_rx_buffer[0];
+    int breakpoint_set_here = 0;
+    WAIT(FAST);
+  }
   // START TX AND RX functions
 }
 
@@ -194,12 +197,7 @@ int talk_to_mcp3008(int channel) {
   return adc_val;
 }
 
-void spi_master_setup_test() {
-  // The configuration procedure is almost the same for master and slave. For specific mode setups, follow the dedicated chapters. When a standard communication is to be initialized, perform these steps:
-
-  // First enable RCC clock
-  RCC->APB2ENR |= (1 << RCC_APB2ENR_SPI1EN_Pos);
-
+void spi_driver_setup() {
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
   GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(SPI_GPIO_NSS_PORT, GPIO_CLOCK_ENABLE);
@@ -227,148 +225,16 @@ void spi_master_setup_test() {
   GPIO_init(&spi_gpio_nss_handle);
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
 
-  // 2.Write to the SPI_CR1 register:
-  // a) Configure the serial clock baud rate using the BR[2:0] bits (Note: 3).
-  // NOTE says: These bits should not be changed when communication is ongoing.
-  SPI_PORT->CR1 |= (SPI_BAUD_RATE << SPI_CR1_BR_Pos);
-
-  // b) Configure the CPOL and CPHA bits combination to define one of the fou  relationships between the data transfer and the serial clock. (Note: 2 - except the  case when CRC is enabled at TI mode).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CPOL_Pos);
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CPHA_Pos);
-
-  // c) Select simplex or half-duplex mode by configuring RXONLY or BIDIMODE and BIDIOE (RXONLY and BIDIMODE can't be set at the same time).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_BIDIMODE_Pos);
-  // BIDIOE is bidirectional output enable (output-only on the pin, as opposed to input-only)
-
-  // d) Configure the LSBFIRST bit to define the frame format (Note: 2).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_LSBFIRST_Pos);  // MSB first
-
-  // e) Configure the CRCEN and CRCEN bits if CRC is needed (while SCK clock signal is at idle state
-  SPI_PORT->CR1 |= (0 << SPI_CR1_CRCEN_Pos);
-
-  // f) Configure SSM and SSI (Note: 2).
-  SPI_PORT->CR1 |= (1 << SPI_CR1_SSM_Pos);
-  SPI_PORT->CR1 |= (1 << SPI_CR1_SSI_Pos);
-
-  // g) Configure the MSTR bit (in multimaster NSS configuration, avoid conflict state on NSS if master is configured to prevent MODF error).
-  SPI_PORT->CR1 |= (1 << SPI_CR1_MSTR_Pos);
-
-  // Ad hoc - turn software slave management on
-
-  // h) Set the DFF bit to configure the data frame format (8 or 16 bits).
-  SPI_PORT->CR1 |= (0 << SPI_CR1_DFF_Pos);  // 8-bit DFFs
-
-  // 3:Write to SPI_CR2 register:
-  //    a) Configure SSOE (Note: 1 & 2).
-  // SPI_PORT->CR2 |= (1 << SPI_CR2_SSOE_Pos);
-
-  //    b) Set the FRF bit if the TI protocol is required. Motorola vs TI
-  SPI_PORT->CR2 |= (0 << SPI_CR2_FRF_Pos);
-
-  // 4.Write to SPI_CRCPR register: Configure the CRC polynomial if needed.
-
-  // 5.Write proper DMA registers: Configure DMA streams dedicated for SPI Tx and Rx in DMA registers if the DMA streams are used.
-
-  // // Lastly, enable the SPI peripheral
-  SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
-
-  // NOTES: Seems like I can only enable master mode when SSI and SSM are 1
-  // Otherwise, master gets forced to 0, and MODE FAULT turns to 1
-
-  // REASON: According to the manual, if NSS is pulled low, MODF is set and master mode is cleared
-  // Therefore it is recommended to have a pullup resistor if NSS pin is being used
-  // Or have SSOE enabled, which drives the NSS signal low and only allows for one slave device
-}
-
-int spi_tx_byte(SPI_TypeDef *spi_port, const uint16_t tx_byte) {
-  if (spi_port == NULL) return -1;
-
-  // While the TX Buffer is not empty...
-  while (!(spi_port->SR & (1 << SPI_SR_TXE_Pos)));
-  spi_port->DR = tx_byte;
-
-  // Clear flag
-  spi_port->SR &= ~(1 << SPI_SR_TXE_Pos);
-
-  return 0;
-}
-
-int spi_tx_word(SPI_TypeDef *spi_port, const void *tx_buffer, int len) {
-  return spi_full_duplex_transfer(spi_port, (void *)tx_buffer, (void *)tx_buffer, len);
-}
-
-void spi_tx_in_for_loop() {
-  setup_gpio();
-  spi_master_setup_test();
-
-  char test_str[] = "WHO LET THE DOwaejfoiwefjiT";
-  int len = SIZEOF(test_str);
-  for (;;) {
-    spi_tx_word(SPI_PORT, (const uint8_t *)&len, 1);
-    spi_tx_word(SPI_PORT, (uint8_t *)test_str, len);
-    WAIT(FAST);
-  }
-}
-
-uint16_t spi_rx_byte(SPI_TypeDef *spi_port) {
-  if (spi_port == NULL) return 0;
-
-  // Wait until the rx is empty
-  while (!(spi_port->SR & (1 << SPI_SR_RXNE_Pos)));
-  uint16_t rx_word = spi_port->DR;
-
-  spi_port->SR &= ~(1 << SPI_SR_RXNE_Pos);
-  return rx_word;
-}
-
-int spi_rx_word(SPI_TypeDef *spi_port, uint8_t *rx_buffer, int len) {
-  return spi_full_duplex_transfer(spi_port, rx_buffer, rx_buffer, len);
-}
-
-int spi_full_duplex_transfer(SPI_TypeDef *spi_port, void *tx_buffer, void *rx_buffer, int len) {
-  if (spi_port == NULL) return -1;
-
-  // Get the amount of bytes per frame - Should be 1 bytes, or 2 bytes (dff=1)
-  uint8_t dff_bytes = ((spi_port->CR1 >> SPI_CR1_DFF_Pos) & 0b1) + 1;
-
-  while (len > 0) {
-    // Prepare the tx part of the transmission
-    uint16_t tx_word = 0;
-    if (dff_bytes == 1)
-      tx_word = *((uint8_t *)tx_buffer);
-    else {
-      tx_word = *((uint16_t *)tx_buffer);
-      if (len == 1) tx_word &= 0xFF00;
-    }
-
-    // Send byte
-    spi_tx_byte(spi_port, tx_word);
-
-    // Prepare the rx part of the transmission and receive bytes
-    uint16_t rx_byte = spi_rx_byte(spi_port);
-
-    if (dff_bytes == 1 || len == 1)
-      *((uint8_t *)rx_buffer) = rx_byte & 0xFF;
-    else
-      *((uint16_t *)rx_buffer) = rx_byte;
-
-    // Move buffer along to the next available frame
-    tx_buffer = (uint8_t *)tx_buffer + dff_bytes;
-    rx_buffer = (uint8_t *)rx_buffer + dff_bytes;
-    len -= dff_bytes;
-  }
-
-  return 0;
-}
-
-void full_duplex_transfer_example_code() {
-  setup_gpio();
-  spi_master_setup_test();
-
-  for (;;) {
-    talk_to_mcp3008(0);
-    WAIT(FAST);
-  }
+  spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
+  SPIHandle_t spi_handle = {.addr = SPI_PORT,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
+                                    .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
+                                    .device_mode = SPI_DEVICE_MODE_MASTER,
+                                    .dff = SPI_DFF_8_BIT,
+                                    .ssm = SPI_SSM_ENABLE,
+                                    .dma_setup = {.rx = SPI_DMA_DISABLE, .tx = SPI_DMA_DISABLE},
+                                    .interrupt_setup.en = SPI_INTERRUPT_DISABLE}};
+  spi_init(&spi_handle);
 }
 
 void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elements) {
@@ -500,8 +366,4 @@ void spi_master_dma_exti_handler() {
 
     dma_start_transfer(DMA_SPI_TX_STREAM, SIZEOF(dma_tx_str));
   }
-}
-
-void enable_spi_interrupt(SPI_TypeDef *spi_port) {
-  if (spi_port == NULL) return;
 }

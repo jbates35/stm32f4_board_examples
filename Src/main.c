@@ -70,9 +70,9 @@
 void spi_master_setup_test();
 void spi_tx_in_for_loop();
 
-void spi_driver_setup();
+void spi_driver_setup_master();
 
-void spi_master_setup_dma_test(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
+void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
 
 void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr);
@@ -86,32 +86,22 @@ void enable_spi_interrupt(SPI_TypeDef *spi_port);
 char dma_tx_str[17];
 uint8_t ard_dma_tx[4];
 uint8_t ard_dma_rx[4];
-uint8_t mcp3008_dma_tx[4];
-uint8_t mcp3008_dma_rx[4];
 
 int main(void) {
   // AFTER THIS, TRY OUT SLAVE MODE
-  // NEED TO ADD DMA
   // NEED TO GET INTERRUPT GOING
 
-  spi_driver_setup();
+  uint8_t mcp3008_dma_tx[3] = {1, (1 << 7) | (1 << 4), 0};
+  uint8_t mcp3008_dma_rx[3];
 
-  uint8_t spi_tx_buffer[3];
-  uint8_t spi_rx_buffer[3];
-
-  //Channel 1
-  spi_tx_buffer[0] = 1;
-  spi_tx_buffer[1] = (1 << 7) | (1 << 4);
+  spi_dma_driver_setup_master(mcp3008_dma_tx, mcp3008_dma_rx, 3);
 
   for (;;) {
+    dma_start_transfer(DMA_SPI_RX_STREAM, 3);
     GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-    spi_full_duplex_transfer(SPI1, spi_tx_buffer, spi_rx_buffer, 3);
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-    uint16_t adc_val = ((spi_rx_buffer[1] & 3) << 8) | spi_rx_buffer[0];
-    int breakpoint_set_here = 0;
+    dma_start_transfer(DMA_SPI_TX_STREAM, 3);
     WAIT(FAST);
   }
-  // START TX AND RX functions
 }
 
 void EXTI15_10_IRQHandler(void) {
@@ -121,10 +111,12 @@ void EXTI15_10_IRQHandler(void) {
 }
 
 void DMA2_Stream2_IRQHandler(void) {
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
   if (dma_irq_handling(DMA_SPI_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
-    int adc_val = (mcp3008_dma_rx[1] & 0b11) << 8 | mcp3008_dma_rx[2];
-    int asdf = 0;
+    uint8_t *rx_arr = (uint8_t *) (DMA_SPI_RX_STREAM->M0AR);
+
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+    uint16_t adc_val = ((rx_arr[1] & 3) << 8) | rx_arr[2];
+    int breakpoint_set_here = 0;
   }
 }
 void talk_to_arduino() {
@@ -181,23 +173,7 @@ int full_duplex_arduino_main_func() {
   }
 }
 
-int talk_to_mcp3008(int channel) {
-  uint8_t rx_bytes[3] = {0};
-  uint8_t tx_bytes[3] = {0};
-
-  // Look to mcp3008 for pattern needed to be sent
-  tx_bytes[0] = 1;
-  tx_bytes[1] = (1 << 7) | ((channel & 0b111) << 4);
-
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-  spi_full_duplex_transfer(SPI1, tx_bytes, rx_bytes, 3);
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-
-  int adc_val = (rx_bytes[1] & 0b11) << 8 | rx_bytes[2];
-  return adc_val;
-}
-
-void spi_driver_setup() {
+void spi_driver_setup_master() {
   // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
   GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIO_peri_clock_control(SPI_GPIO_NSS_PORT, GPIO_CLOCK_ENABLE);
@@ -237,7 +213,7 @@ void spi_driver_setup() {
   spi_init(&spi_handle);
 }
 
-void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elements) {
+void spi_dma_driver_setup_master(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elements) {
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t spi_dma_tx_handle = {
       .cfg = {.in = {.addr = (uintptr_t)tx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
@@ -283,19 +259,42 @@ void spi_master_setup_dma_test(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elemen
   dma_peri_clock_control(DMA2, 1);
   NVIC_EnableIRQ(DMA2_Stream2_IRQn);
 
-  spi_master_setup_test();
+  GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
+  GPIO_peri_clock_control(SPI_GPIO_NSS_PORT, GPIO_CLOCK_ENABLE);
+  GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
+                                   .speed = GPIO_SPEED_HIGH,
+                                   .float_resistor = GPIO_PUPDR_NONE,
+                                   .output_type = GPIO_OP_TYPE_PUSHPULL,
+                                   .alt_func_num = 5};
+  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_clk_handle.cfg.pin_number = SPI_GPIO_CLK_PIN;
+  GPIO_init(&spi_gpio_clk_handle);
 
-  SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
-  SPI_PORT->CR2 |= (1 << SPI_CR2_TXDMAEN_Pos);
-  SPI_PORT->CR2 |= (1 << SPI_CR2_RXDMAEN_Pos);
+  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_miso_handle.cfg.pin_number = SPI_GPIO_MISO_PIN;
+  GPIO_init(&spi_gpio_miso_handle);
 
-  SPI_PORT->CR1 |= (1 << SPI_CR1_SPE_Pos);
+  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
+  GPIO_init(&spi_gpio_mosi_handle);
 
-  // Biggest reasons for using SPI in DMA mode:
-  // 1.) Tighter timing. There's less CPU load and you'll see clocks that signify continuous transfers
+  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_NSS_PORT, .cfg = default_gpio_cfg};
+  spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
+  spi_gpio_nss_handle.cfg.alt_func_num = 0;
+  spi_gpio_nss_handle.cfg.mode = GPIO_MODE_OUT;
+  GPIO_init(&spi_gpio_nss_handle);
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
 
-  // Biggest reasons not to:
-  // 1.) It can be hard to time with rxne and what not.
+  spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
+  SPIHandle_t spi_handle = {.addr = SPI_PORT,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
+                                    .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
+                                    .device_mode = SPI_DEVICE_MODE_MASTER,
+                                    .dff = SPI_DFF_8_BIT,
+                                    .ssm = SPI_SSM_ENABLE,
+                                    .dma_setup = {.rx = SPI_DMA_ENABLE, .tx = SPI_DMA_ENABLE},
+                                    .interrupt_setup.en = SPI_INTERRUPT_DISABLE}};
+  spi_init(&spi_handle);
 }
 
 void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr) {

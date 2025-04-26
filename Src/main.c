@@ -108,10 +108,8 @@ int main(void) {
   spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_TX, spi_int_func);
 
   for (;;) {
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
     spi_start_interrupt_transfer(SPI_PORT);
-
-    WAIT(SLOW);
-    WAIT(SLOW);
     WAIT(SLOW);
   }
 }
@@ -120,7 +118,7 @@ void spi_int_func(void) { int asdf = 0; }
 
 void SPI1_IRQHandler(void) {
   if (spi_irq_handling(SPI_PORT)) {
-    int asdfjkl = 0;
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
   }
 }
 

@@ -74,30 +74,22 @@ void spi_driver_setup_interrupts();
 
 void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
-
-void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr);
-void talk_to_arduino();
-int talk_to_mcp3008(int channel);
-
-void talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr);
-
-char dma_tx_str[17];
-uint8_t ard_dma_tx[4];
-uint8_t ard_dma_rx[4];
-
 void spi_int_func(void);
+void spi_start_int(SPI_TypeDef *spi_reg);
 
 uint8_t mcp3008_dma_tx[3] = {1, (1 << 7) | (1 << 4), 0};
 uint8_t mcp3008_dma_rx[3];
+uint8_t counter;
+uint8_t spi_finished_flag;
 
 int main(void) {
   // AFTER THIS, TRY OUT SLAVE MODE
   // NEED TO GET INTERRUPT GOING
-  // ALSO NEED TO TEST OUT 16bit
+  // ALSO NEED TO TEST OUT 16b
 
   spi_driver_setup_interrupts();
 
-  spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
+  // spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
   spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
 
   // Consider using void* for setting up
@@ -107,9 +99,17 @@ int main(void) {
   spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_RX, spi_int_func);
   spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_TX, spi_int_func);
 
+  spi_finished_flag = 0;
+  counter = 0;
+
   for (;;) {
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-    spi_start_interrupt_transfer(SPI_PORT);
+    if (spi_finished_flag) {
+      spi_finished_flag = 0;
+      uint16_t adc_val = 0x3FF & *((uint16_t *)(mcp3008_dma_rx + 1));
+      int breakpointhere = 0;
+    }
+    // spi_start_interrupt_transfer(SPI_PORT);
+    spi_start_int(SPI_PORT);
     WAIT(SLOW);
   }
 }
@@ -117,69 +117,27 @@ int main(void) {
 void spi_int_func(void) { int asdf = 0; }
 
 void SPI1_IRQHandler(void) {
-  if (spi_irq_handling(SPI_PORT)) {
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+  if (spi_irq_handling(SPI_PORT) == 1) {
+    uint16_t rx_word = SPI_PORT->DR;
+    mcp3008_dma_rx[counter] = (uint8_t)rx_word;
+    counter++;
+
+    if (counter == 3) {
+      counter = 0;
+      spi_finished_flag = 1;
+      SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
+      GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+    } else {
+      SPI_PORT->DR = (uint16_t)(mcp3008_dma_tx[0] & 0xFF);
+    }
   }
 }
 
-void EXTI15_10_IRQHandler(void) {
-  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    talk_to_arduino();
-  }
-}
-
-void talk_to_arduino() {
-  static uint8_t method_num = 0;
-
-  uint8_t cmd_tx_bytes[2] = {0xFF, 2};
-  uint8_t cmd_rx_bytes[2] = {0};
-
-  uint8_t sig_tx_bytes[2] = {0};
-  uint8_t sig_rx_bytes[2] = {0};
-
-  switch (method_num) {
-    case 0:
-      cmd_tx_bytes[0] = COMMAND_LED_CTRL;
-      sig_tx_bytes[0] = 9;
-      sig_tx_bytes[1] = 1;
-      break;
-    case 1:
-      cmd_tx_bytes[0] = COMMAND_SENSOR_READ;
-      break;
-    case 2:
-      cmd_tx_bytes[0] = COMMAND_LED_CTRL;
-      sig_tx_bytes[0] = 9;
-      sig_tx_bytes[1] = 0;
-      break;
-  }
-
-  // Send dat data
+void spi_start_int(SPI_TypeDef *spi_reg) {
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-  spi_full_duplex_transfer(SPI1, cmd_tx_bytes, cmd_rx_bytes, 2);
-
-  if (cmd_rx_bytes[1] == ACK) {
-    spi_full_duplex_transfer(SPI1, &sig_tx_bytes[0], &sig_rx_bytes[0], 1);
-    WAIT(FAST);  // Needed for the amount of time Arduino needs to have to sample the  ADC val
-    spi_full_duplex_transfer(SPI1, &sig_tx_bytes[1], &sig_rx_bytes[1], 1);
-  }
-
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-
-  uint8_t sensor_read = sig_rx_bytes[1];
-  if (method_num == 1) printf("Result of sensor read: %d\n", sensor_read);
-
-  method_num = (method_num + 1) % 3;
-}
-
-int full_duplex_arduino_main_func() {
-  setup_gpio();
-  spi_master_setup_test();
-
-  for (;;) {
-    talk_to_arduino();
-    WAIT(SLOW);
-  }
+  spi_reg->CR1 |= (1 << SPI_CR1_SPE_Pos);
+  while (spi_reg->SR & (1 << SPI_SR_BSY_Pos));
+  spi_reg->DR = (uint16_t)(mcp3008_dma_tx[0] & 0xFF);
 }
 
 void spi_driver_setup_interrupts() {
@@ -223,73 +181,4 @@ void spi_driver_setup_interrupts() {
   spi_init(&spi_handle);
 
   NVIC_EnableIRQ(SPI1_IRQn);
-}
-void talk_to_arduino_dma(uint8_t *tx_arr, uint8_t *rx_arr) {
-  static uint8_t method_num = 0;
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-  tx_arr[1] = 2;
-  if (method_num == 0 || method_num == 2)
-    tx_arr[0] = COMMAND_LED_CTRL;
-  else if (method_num == 1)
-    tx_arr[0] = COMMAND_SENSOR_READ;
-
-  WAIT(FAST);
-
-  dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-  int breakpoint1 = 0;
-
-  tx_arr[0] = 2;
-  WAIT(FAST);
-  dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-  WAIT(FAST);
-
-  if (rx_arr[0] == ACK) {
-    if (method_num == 0) {
-      tx_arr[0] = 9;
-      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-      WAIT(FAST);
-      tx_arr[0] = 1;
-      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-    } else if (method_num == 1) {
-      tx_arr[0] = 0;
-      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-      WAIT(FAST);
-      dma_start_transfer(DMA_SPI_TX_STREAM, 1);
-      printf("Result of sensor read: %d\n", rx_arr[3]);
-    } else if (method_num == 2) {
-      tx_arr[0] = 9;
-      tx_arr[1] = 0;
-      dma_start_transfer(DMA_SPI_TX_STREAM, 2);
-    }
-  }
-
-  WAIT(FAST);
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-  method_num = (method_num + 1) % 3;
-}
-
-void talk_to_mcp3008_dma(uint8_t channel, uint8_t *tx_arr, uint8_t *rx_arr) {
-  // Look to mcp3008 for pattern needed to be sent
-  tx_arr[0] = 1;
-  tx_arr[1] = (1 << 7) | ((channel & 0b111) << 4);
-  tx_arr[2] = 0;
-
-  dma_start_transfer(DMA_SPI_RX_STREAM, 3);
-
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-  dma_start_transfer(DMA_SPI_TX_STREAM, 3);
-}
-
-void spi_master_dma_exti_handler() {
-  if (GPIO_irq_handling(USER_PBUTTON_PIN)) {
-    memset(&dma_tx_str, 0, SIZEOF(dma_tx_str));
-    char test_str[] = "asdfjkl lkjfdsa";
-    int len = SIZEOF(test_str);
-    dma_tx_str[0] = (char)len;
-    strcat(dma_tx_str, test_str);
-
-    dma_start_transfer(DMA_SPI_TX_STREAM, SIZEOF(dma_tx_str));
-  }
 }

@@ -77,8 +77,8 @@ void spi_master_dma_exti_handler();
 void spi_int_func(void);
 void spi_start_int(SPI_TypeDef *spi_reg);
 
-uint8_t mcp3008_dma_tx[3] = {1, (1 << 7) | (1 << 4), 0};
-uint8_t mcp3008_dma_rx[3];
+uint8_t mcp3008_tx[3] = {1, (1 << 7) | (1 << 4), 0};
+uint8_t mcp3008_rx[3];
 uint8_t counter;
 uint8_t spi_finished_flag;
 
@@ -89,23 +89,22 @@ int main(void) {
 
   spi_driver_setup_interrupts();
 
-  // spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
+  spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
   spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
 
   // Consider using void* for setting up
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)&mcp3008_dma_tx, 3);
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)&mcp3008_dma_rx, 3);
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)&mcp3008_tx, 3);
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)&mcp3008_rx, 3);
 
   spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_RX, spi_int_func);
   spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_TX, spi_int_func);
 
   spi_finished_flag = 0;
-  counter = 0;
 
   for (;;) {
     if (spi_finished_flag) {
       spi_finished_flag = 0;
-      uint16_t adc_val = 0x3FF & *((uint16_t *)(mcp3008_dma_rx + 1));
+      uint16_t adc_val = ((mcp3008_rx[1] & 0b11) << 8) + mcp3008_rx[2];
       int breakpointhere = 0;
     }
     // spi_start_interrupt_transfer(SPI_PORT);
@@ -117,18 +116,41 @@ int main(void) {
 void spi_int_func(void) { int asdf = 0; }
 
 void SPI1_IRQHandler(void) {
-  if (spi_irq_handling(SPI_PORT) == 1) {
-    uint16_t rx_word = SPI_PORT->DR;
-    mcp3008_dma_rx[counter] = (uint8_t)rx_word;
-    counter++;
+  static int counter = 0;
 
-    if (counter == 3) {
+  uint8_t spi_req = spi_irq_handling(SPI_PORT);
+  uint8_t breakpointhere1 = 0;
+  static uint32_t test_counter = 0;
+
+  if (spi_req == 2) {
+    // uint8_t tx_word = mcp3008_tx[counter];
+    test_counter++;
+
+    switch (counter) {
+      case 0:
+        SPI_PORT->DR = 0x1;
+        break;
+      case 1:
+        SPI_PORT->DR = 0x90;
+        break;
+      case 2:
+        SPI_PORT->DR = 0xFF;
+        break;
+    }
+  }
+
+  if (spi_req == 1) {
+    uint16_t rx_word = SPI_PORT->DR;
+    mcp3008_rx[counter] = rx_word;
+    counter++;
+    test_counter = 0;
+
+    if (counter >= 3) {
       counter = 0;
       spi_finished_flag = 1;
+      while (SPI_PORT->SR & (1 << SPI_SR_BSY_Pos));  // important
       SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
       GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-    } else {
-      SPI_PORT->DR = (uint16_t)(mcp3008_dma_tx[0] & 0xFF);
     }
   }
 }
@@ -137,7 +159,8 @@ void spi_start_int(SPI_TypeDef *spi_reg) {
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
   spi_reg->CR1 |= (1 << SPI_CR1_SPE_Pos);
   while (spi_reg->SR & (1 << SPI_SR_BSY_Pos));
-  spi_reg->DR = (uint16_t)(mcp3008_dma_tx[0] & 0xFF);
+  // uint16_t spi_tx_word = (uint16_t)(mcp3008_tx[0] & 0xFF);
+  // spi_reg->DR = spi_tx_word;
 }
 
 void spi_driver_setup_interrupts() {
@@ -170,7 +193,7 @@ void spi_driver_setup_interrupts() {
 
   spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_256,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,

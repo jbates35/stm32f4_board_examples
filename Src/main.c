@@ -79,7 +79,6 @@ void spi_start_int(SPI_TypeDef *spi_reg);
 
 uint8_t mcp3008_tx[3] = {1, (1 << 7) | (1 << 4), 0};
 uint8_t mcp3008_rx[3];
-uint8_t counter;
 uint8_t spi_finished_flag;
 
 int main(void) {
@@ -88,79 +87,56 @@ int main(void) {
   // ALSO NEED TO TEST OUT 16b
 
   spi_driver_setup_interrupts();
-
-  spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
-  spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
-
-  // Consider using void* for setting up
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)&mcp3008_tx, 3);
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)&mcp3008_rx, 3);
-
-  spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_RX, spi_int_func);
-  spi_set_interrupt_callback(SPI_PORT, SPI_INTERRUPT_TYPE_TX, spi_int_func);
+  spi_start_int(SPI1);
 
   spi_finished_flag = 0;
 
   for (;;) {
-    if (spi_finished_flag) {
-      spi_finished_flag = 0;
-      uint16_t adc_val = ((mcp3008_rx[1] & 0b11) << 8) + mcp3008_rx[2];
-      int breakpointhere = 0;
-    }
-    // spi_start_interrupt_transfer(SPI_PORT);
-    spi_start_int(SPI_PORT);
-    WAIT(SLOW);
+    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
+    spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
+    spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
+
+    while (SPI_PORT->SR & (1 << SPI_SR_TXE_Pos) && SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos));
+    WAIT(FAST);
   }
 }
 
-void spi_int_func(void) { int asdf = 0; }
-
 void SPI1_IRQHandler(void) {
-  static int counter = 0;
+  static uint8_t tx_counter = 0;
+  static uint8_t rx_counter = 0;
 
-  uint8_t spi_req = spi_irq_handling(SPI_PORT);
-  uint8_t breakpointhere1 = 0;
-  static uint32_t test_counter = 0;
+  static uint8_t spi_tx_lock = 0;
 
-  if (spi_req == 2) {
-    // uint8_t tx_word = mcp3008_tx[counter];
-    test_counter++;
+  if (SPI1->SR & (1 << SPI_SR_TXE_Pos) && !spi_tx_lock) {
+    spi_tx_lock = 1;
+    SPI1->DR = mcp3008_tx[tx_counter];
 
-    switch (counter) {
-      case 0:
-        SPI_PORT->DR = 0x1;
-        break;
-      case 1:
-        SPI_PORT->DR = 0x90;
-        break;
-      case 2:
-        SPI_PORT->DR = 0xFF;
-        break;
+    tx_counter++;
+    if (tx_counter >= SIZEOF(mcp3008_tx)) {
+      tx_counter = 0;
+      spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_DISABLE);
     }
   }
 
-  if (spi_req == 1) {
-    uint16_t rx_word = SPI_PORT->DR;
-    mcp3008_rx[counter] = rx_word;
-    counter++;
-    test_counter = 0;
+  if (SPI1->SR & (1 << SPI_SR_RXNE_Pos)) {
+    mcp3008_rx[rx_counter] = SPI1->DR;
 
-    if (counter >= 3) {
-      counter = 0;
-      spi_finished_flag = 1;
-      while (SPI_PORT->SR & (1 << SPI_SR_BSY_Pos));  // important
-      SPI_PORT->CR1 &= ~(1 << SPI_CR1_SPE_Pos);
+    rx_counter++;
+    if (rx_counter >= SIZEOF(mcp3008_rx)) {
+      rx_counter = 0;
+      spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_DISABLE);
+
       GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+      int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
+      int breakpointhere = 0;
     }
+    spi_tx_lock = 0;
   }
 }
 
 void spi_start_int(SPI_TypeDef *spi_reg) {
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
   spi_reg->CR1 |= (1 << SPI_CR1_SPE_Pos);
-  while (spi_reg->SR & (1 << SPI_SR_BSY_Pos));
-  // uint16_t spi_tx_word = (uint16_t)(mcp3008_tx[0] & 0xFF);
-  // spi_reg->DR = spi_tx_word;
 }
 
 void spi_driver_setup_interrupts() {

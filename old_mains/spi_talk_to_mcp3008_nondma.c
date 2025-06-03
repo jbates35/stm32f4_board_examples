@@ -1,4 +1,5 @@
 
+
 // Will use as backup for main for now
 /**
  ******************************************************************************
@@ -55,7 +56,7 @@ int main(void) {
   uint8_t spi_tx_buffer[3];
   uint8_t spi_rx_buffer[3];
 
-  //Channel 1
+  // Channel 1
   spi_tx_buffer[0] = 1;
   spi_tx_buffer[1] = (1 << 7) | (1 << 4);
 
@@ -103,7 +104,8 @@ void spi_driver_setup_master() {
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,
                                     .ssm = SPI_SSM_ENABLE,
-                                    .dma_setup = {.rx = SPI_DMA_DISABLE, .tx = SPI_DMA_DISABLE},
-                                    .interrupt_setup.en = SPI_INTERRUPT_DISABLE}};
+                                    .dma_setup = {.rx = SPI_DISABLE, .tx = SPI_DISABLE},
+                                    .interrupt_setup.en = SPI_DISABLE,
+                                    .enable_on_init = SPI_ENABLE}};
   spi_init(&spi_handle);
 }

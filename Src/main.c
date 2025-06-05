@@ -105,10 +105,9 @@ void SPI1_IRQHandler(void) {
   static uint8_t tx_counter = 0;
   static uint8_t rx_counter = 0;
 
-  static uint8_t spi_tx_lock = 0;
+  SPIInterruptType_t interrupt_request = spi_irq_handling(SPI_PORT);
 
-  if (SPI1->SR & (1 << SPI_SR_TXE_Pos) && !spi_tx_lock) {
-    spi_tx_lock = 1;
+  if (interrupt_request == SPI_INTERRUPT_TYPE_TX) {
     SPI1->DR = mcp3008_tx[tx_counter];
 
     tx_counter++;
@@ -118,7 +117,7 @@ void SPI1_IRQHandler(void) {
     }
   }
 
-  if (SPI1->SR & (1 << SPI_SR_RXNE_Pos)) {
+  if (interrupt_request == SPI_INTERRUPT_TYPE_RX) {
     mcp3008_rx[rx_counter] = SPI1->DR;
 
     rx_counter++;
@@ -130,7 +129,6 @@ void SPI1_IRQHandler(void) {
       int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
       int breakpointhere = 0;
     }
-    spi_tx_lock = 0;
   }
 }
 

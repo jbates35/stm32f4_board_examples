@@ -110,6 +110,7 @@ void SPI1_IRQHandler(void) {
 }
 
 void spi_int_func(void) {
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
   int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
   int breakpoint_here = 0;
 }

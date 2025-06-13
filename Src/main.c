@@ -75,7 +75,6 @@ void spi_driver_setup_interrupts();
 void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
 void spi_master_dma_exti_handler();
 void spi_int_func(void);
-void spi_start_int(SPI_TypeDef *spi_reg);
 
 uint8_t mcp3008_tx[3] = {1, (1 << 7) | (1 << 4), 0};
 uint8_t mcp3008_rx[3];
@@ -87,8 +86,11 @@ int main(void) {
   // ALSO NEED TO TEST OUT 16b
 
   spi_driver_setup_interrupts();
-  spi_start_int(SPI1);
 
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)&mcp3008_tx, SIZEOF(mcp3008_tx));
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)&mcp3008_rx, SIZEOF(mcp3008_rx));
+
+  spi_set_interrupt_callback(SPI_PORT, &spi_int_func);
   spi_finished_flag = 0;
 
   for (;;) {
@@ -97,44 +99,19 @@ int main(void) {
     spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
 
     while (SPI_PORT->SR & (1 << SPI_SR_TXE_Pos) && SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos));
-    WAIT(FAST);
+
+    WAIT(SLOW);
   }
 }
 
 void SPI1_IRQHandler(void) {
-  static uint8_t tx_counter = 0;
-  static uint8_t rx_counter = 0;
-
-  SPIInterruptType_t interrupt_request = spi_irq_handling(SPI_PORT);
-
-  if (interrupt_request == SPI_INTERRUPT_TYPE_TX) {
-    SPI1->DR = mcp3008_tx[tx_counter];
-
-    tx_counter++;
-    if (tx_counter >= SIZEOF(mcp3008_tx)) {
-      tx_counter = 0;
-      spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_DISABLE);
-    }
-  }
-
-  if (interrupt_request == SPI_INTERRUPT_TYPE_RX) {
-    mcp3008_rx[rx_counter] = SPI1->DR;
-
-    rx_counter++;
-    if (rx_counter >= SIZEOF(mcp3008_rx)) {
-      rx_counter = 0;
-      spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_DISABLE);
-
-      GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-      int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
-      int breakpointhere = 0;
-    }
-  }
+  spi_irq_word_handling(SPI1);
+  int asdfasdf = 0;
 }
 
-void spi_start_int(SPI_TypeDef *spi_reg) {
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-  spi_reg->CR1 |= (1 << SPI_CR1_SPE_Pos);
+void spi_int_func(void) {
+  int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
+  int breakpoint_here = 0;
 }
 
 void spi_driver_setup_interrupts() {
@@ -174,7 +151,7 @@ void spi_driver_setup_interrupts() {
                                     .ssm = SPI_SSM_ENABLE,
                                     .dma_setup = {.rx = SPI_DISABLE, .tx = SPI_DISABLE},
                                     .interrupt_setup.en = SPI_DISABLE,
-                                    .enable_on_init = SPI_DISABLE}};
+                                    .enable_on_init = SPI_ENABLE}};
   spi_init(&spi_handle);
 
   NVIC_EnableIRQ(SPI1_IRQn);

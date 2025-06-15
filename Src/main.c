@@ -76,7 +76,7 @@ void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t ele
 void spi_master_dma_exti_handler();
 void spi_int_func(void);
 
-uint8_t mcp3008_tx[3] = {1, (1 << 7) | (1 << 4), 0};
+uint8_t mcp3008_tx[2] = {1, (1 << 7) | (1 << 4)};  // , 0};
 uint8_t mcp3008_rx[3];
 uint8_t spi_finished_flag;
 
@@ -87,16 +87,15 @@ int main(void) {
 
   spi_driver_setup_interrupts();
 
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)&mcp3008_tx, SIZEOF(mcp3008_tx));
-  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)&mcp3008_rx, SIZEOF(mcp3008_rx));
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)mcp3008_tx, SIZEOF(mcp3008_tx));
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)mcp3008_rx, SIZEOF(mcp3008_rx));
 
   spi_set_interrupt_callback(SPI_PORT, &spi_int_func);
   spi_finished_flag = 0;
 
   for (;;) {
     GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-    spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, SPI_ENABLE);
-    spi_enable_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, SPI_ENABLE);
+    spi_start_interrupt_transfer(SPI_PORT);
 
     while (SPI_PORT->SR & (1 << SPI_SR_TXE_Pos) && SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos));
 
@@ -104,10 +103,7 @@ int main(void) {
   }
 }
 
-void SPI1_IRQHandler(void) {
-  spi_irq_word_handling(SPI1);
-  int asdfasdf = 0;
-}
+void SPI1_IRQHandler(void) { spi_irq_word_handling(SPI1); }
 
 void spi_int_func(void) {
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
@@ -145,7 +141,7 @@ void spi_driver_setup_interrupts() {
 
   spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_256,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,

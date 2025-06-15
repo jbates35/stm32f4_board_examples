@@ -90,16 +90,13 @@ int main(void) {
   spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)mcp3008_tx, SIZEOF(mcp3008_tx));
   spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)mcp3008_rx, SIZEOF(mcp3008_rx));
 
+  spi_set_circular_interrupt(SPI_PORT, SPI_INTERRUPT_CIRCULAR);
+
   spi_set_interrupt_callback(SPI_PORT, &spi_int_func);
-  spi_finished_flag = 0;
+
+  spi_start_int_word_transfer(SPI_PORT);
 
   for (;;) {
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-    spi_start_interrupt_transfer(SPI_PORT);
-
-    while (SPI_PORT->SR & (1 << SPI_SR_TXE_Pos) && SPI_PORT->SR & (1 << SPI_SR_RXNE_Pos));
-
-    WAIT(SLOW);
   }
 }
 
@@ -109,6 +106,10 @@ void spi_int_func(void) {
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
   int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
   int breakpoint_here = 0;
+
+  for (int i = 0; i < 20; i++);
+
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
 }
 
 void spi_driver_setup_interrupts() {
@@ -141,13 +142,12 @@ void spi_driver_setup_interrupts() {
 
   spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_256,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,
                                     .ssm = SPI_SSM_ENABLE,
                                     .dma_setup = {.rx = SPI_DISABLE, .tx = SPI_DISABLE},
-                                    .interrupt_setup.en = SPI_DISABLE,
                                     .enable_on_init = SPI_ENABLE}};
   spi_init(&spi_handle);
 

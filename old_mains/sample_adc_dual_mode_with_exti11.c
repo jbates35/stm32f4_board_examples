@@ -42,7 +42,7 @@ int main(void) {
 }
 
 void DMA2_Stream0_IRQHandler(void) {
-  if (dma_irq_handling(DMA2, 0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
+  if (dma_irq_handling(DMA2_Stream0, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
     uint16_t val1 = dual_var[0] & 0xFFFF;
     uint16_t val2 = (dual_var[0] >> 16) & 0xFFFF;
     uint32_t set_breakpoint_here = (val1 << 16) + val2;
@@ -97,7 +97,8 @@ void adc_driver_dual_setup(volatile uint32_t *out_arr, const uint8_t arr_len) {
                       .transfer_error = DMA_INTERRUPT_DISABLE,
                       .direct_mode_error = DMA_INTERRUPT_DISABLE,
                       .half_transfer = DMA_INTERRUPT_DISABLE,
-                  }},
+                  },
+              .start_enabled = DMA_START_ENABLED},
       .p_stream_addr = DMA2_Stream0};
   dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
   dma_stream_init(&adc_dma_handle);

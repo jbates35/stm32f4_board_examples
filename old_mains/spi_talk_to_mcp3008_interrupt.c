@@ -1,3 +1,4 @@
+
 /**
  ****************************************************************************
  * @file           : main.c
@@ -16,15 +17,7 @@
  ******************************************************************************
  */
 
-/*
-  EXAMPLE OF SPI INTERRUPT SEND/RECV WITH AN ARDUINO
-  Does NOT use the full word interrupt. For that, check out spi_talk_to_mcp3008_interrupt
-  Requires an Arduino with 002SPISlaveCmdHandling.ino
-*/
-
 #include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 
 #include "stm32f446xx.h"
 #include "stm32f446xx_gpio.h"
@@ -34,15 +27,8 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-int _write(int le, char *ptr, int len) {
-  int DataIdx;
-  for (DataIdx = 0; DataIdx < len; DataIdx++) {
-    ITM_SendChar(*ptr++);
-  }
-  return len;
-}
-
 #define SPI_PORT SPI1
+
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_CLK_PIN 5
 #define SPI_GPIO_MISO_PIN 6
@@ -50,23 +36,6 @@ int _write(int le, char *ptr, int len) {
 
 #define SPI_GPIO_NSS_PORT GPIOA
 #define SPI_GPIO_NSS_PIN 4
-
-// command codes
-#define COMMAND_LED_CTRL 0x50
-#define COMMAND_SENSOR_READ 0x51
-#define COMMAND_LED_READ 0x52
-#define COMMAND_PRINT 0x53
-#define COMMAND_ID_READ 0x54
-
-#define COMMAND_ID_LENGTH 10
-
-#define LED_ON 1
-#define LED_OFF 0
-
-#define NACK 0xA5
-#define ACK 0xF5
-
-#define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
 
 #define FAST 100000
 #define MEDIUM 300000
@@ -76,105 +45,39 @@ int _write(int le, char *ptr, int len) {
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
-uint8_t command_recv = 0;
-char rx_word[20] = {0};
-int spi_finished_flag = 0;
-
-void spi_master_setup_test();
-void spi_tx_in_for_loop();
+#define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
 
 void spi_driver_setup_interrupts();
-
-void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
-void spi_master_dma_exti_handler();
 void spi_int_func(void);
 
-int main(void) {
-  // AFTER THIS, TRY OUT SLAVE MODE
-  // NEED TO GET INTERRUPT GOING
-  // ALSO NEED TO TEST OUT 16b
+uint8_t mcp3008_tx[2] = {1, (1 << 7) | (1 << 4)};  // , 0};
+uint8_t mcp3008_rx[3];
 
+int main(void) {
   spi_driver_setup_interrupts();
+
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_TX, (char *)mcp3008_tx, SIZEOF(mcp3008_tx));
+  spi_setup_interrupt(SPI_PORT, SPI_INTERRUPT_TYPE_RX, (char *)mcp3008_rx, SIZEOF(mcp3008_rx));
+  spi_set_circular_interrupt(SPI_PORT, SPI_INTERRUPT_CIRCULAR);
+  spi_set_interrupt_callback(SPI_PORT, &spi_int_func);
+
+  // Since this is set up in circular mode, it will automatically restart when spi is done transferring the word
   spi_start_int_word_transfer(SPI_PORT);
-  WAIT(FAST);
 
   for (;;) {
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-    // spi1, tx=enable, rx=enable
-    spi_enable_int_transfer(SPI_PORT, SPI_ENABLE, SPI_ENABLE);
-
-    WAIT(SLOW);
-
-    if (spi_finished_flag) {
-      spi_finished_flag = 0;
-      printf("%s\n", rx_word);
-      WAIT(FAST);
-      memset(&rx_word, 0, SIZEOF(rx_word));
-    }
   }
 }
 
-void SPI1_IRQHandler(void) {
-  static int cmd_or_sig = 0;  // 0 for command, 1 for signal
-  static int counter = 0;
+void SPI1_IRQHandler(void) { spi_irq_word_handling(SPI1); }
 
-  // Heartbeat of this IRQ handling - This will either return SPI_INTERRUPT_TYPE_TX or SPI_INTERRUPT_TYPE_RX
-  // The function has its own internal "mutex" which locks the tx flag to it can't be activated until the RX
-  // has been activated. That is, if the RXNIE is activated.
-  SPIInterruptType_t irq_type = spi_irq_handling(SPI_PORT);
+void spi_int_func(void) {
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
+  int adc_val = ((mcp3008_rx[1] & 0x3) << 8) + mcp3008_rx[2];
 
-  if (cmd_or_sig == 0) {
-    // COMMAND MODE - Sends command to arduino to send its board ID
-    // And if the byte is correct (ACK), it will proceed to the signal part of the
-    // method after.
+  // Add a little bit of time for the GPIO pin to go high and then low to reset mcp3008
+  for (int i = 0; i < 20; i++);
 
-    const static uint8_t cmd_tx[2] = {COMMAND_ID_READ, 10};
-    static uint8_t cmd_rx[2] = {0};
-
-    if (irq_type == SPI_INTERRUPT_TYPE_TX) {
-      SPI_PORT->DR = cmd_tx[counter];
-    }
-
-    if (irq_type == SPI_INTERRUPT_TYPE_RX) {
-      cmd_rx[counter] = SPI_PORT->DR;
-      counter++;
-    }
-
-    if (counter >= 2) {
-      counter = 0;
-      if (cmd_rx[1] == ACK) {
-        // SUCCESS - Move to next part of algorithm
-        memset(cmd_rx, 0, SIZEOF(cmd_rx));
-        cmd_or_sig = 1;
-      } else {
-        // Failure - need to reset everything
-        spi_disable_int_transfer(SPI_PORT);
-        GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-      }
-    }
-
-  } else if (cmd_or_sig == 1) {
-    // SIGNAL MODE - This now just sends dummy bytes to the SPI
-    // register, which then now waits for the word to be loaded in
-    // of the ARDUINO BOARD ID
-    if (irq_type == SPI_INTERRUPT_TYPE_TX) {
-      SPI_PORT->DR = 0xFF;
-    }
-
-    if (irq_type == SPI_INTERRUPT_TYPE_RX) {
-      rx_word[counter] = SPI_PORT->DR;
-      counter++;
-    }
-
-    if (counter >= COMMAND_ID_LENGTH) {
-      counter = 0;
-      cmd_or_sig = 0;
-      spi_disable_int_transfer(SPI_PORT);
-      GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-      spi_finished_flag = 1;
-    }
-  }
+  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
 }
 
 void spi_driver_setup_interrupts() {
@@ -207,7 +110,7 @@ void spi_driver_setup_interrupts() {
 
   spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_8,
+                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_256,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,

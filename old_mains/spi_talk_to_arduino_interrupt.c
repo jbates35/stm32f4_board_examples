@@ -1,3 +1,4 @@
+
 /**
  ****************************************************************************
  * @file           : main.c
@@ -34,14 +35,6 @@
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
 #endif
 
-int _write(int le, char *ptr, int len) {
-  int DataIdx;
-  for (DataIdx = 0; DataIdx < len; DataIdx++) {
-    ITM_SendChar(*ptr++);
-  }
-  return len;
-}
-
 #define SPI_PORT SPI1
 #define SPI_GPIO_PORT GPIOA
 #define SPI_GPIO_CLK_PIN 5
@@ -75,6 +68,14 @@ int _write(int le, char *ptr, int len) {
   do {                                                     \
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
+
+int _write(int le, char *ptr, int len) {
+  int DataIdx;
+  for (DataIdx = 0; DataIdx < len; DataIdx++) {
+    ITM_SendChar(*ptr++);
+  }
+  return len;
+}
 
 uint8_t command_recv = 0;
 char rx_word[20] = {0};

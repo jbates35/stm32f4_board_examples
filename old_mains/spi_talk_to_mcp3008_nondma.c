@@ -105,7 +105,6 @@ void spi_driver_setup_master() {
                                     .dff = SPI_DFF_8_BIT,
                                     .ssm = SPI_SSM_ENABLE,
                                     .dma_setup = {.rx = SPI_DISABLE, .tx = SPI_DISABLE},
-                                    .interrupt_setup.en = SPI_DISABLE,
                                     .enable_on_init = SPI_ENABLE}};
   spi_init(&spi_handle);
 }

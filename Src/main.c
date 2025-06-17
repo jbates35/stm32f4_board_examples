@@ -42,29 +42,9 @@ int _write(int le, char *ptr, int len) {
   return len;
 }
 
-#define SPI_PORT SPI1
-#define SPI_GPIO_PORT GPIOA
-#define SPI_GPIO_CLK_PIN 5
-#define SPI_GPIO_MISO_PIN 6
-#define SPI_GPIO_MOSI_PIN 7
-
-#define SPI_GPIO_NSS_PORT GPIOA
-#define SPI_GPIO_NSS_PIN 4
-
-// command codes
-#define COMMAND_LED_CTRL 0x50
-#define COMMAND_SENSOR_READ 0x51
-#define COMMAND_LED_READ 0x52
-#define COMMAND_PRINT 0x53
-#define COMMAND_ID_READ 0x54
-
-#define COMMAND_ID_LENGTH 10
-
-#define LED_ON 1
-#define LED_OFF 0
-
-#define NACK 0xA5
-#define ACK 0xF5
+#define I2C_GPIO_PORT GPIOB
+#define I2C_GPIO_SCL_PIN 8
+#define I2C_GPIO_SDA_PIN 9
 
 #define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
 
@@ -76,145 +56,26 @@ int _write(int le, char *ptr, int len) {
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
-uint8_t command_recv = 0;
-char rx_word[20] = {0};
-int spi_finished_flag = 0;
-
-void spi_master_setup_test();
-void spi_tx_in_for_loop();
-
-void spi_driver_setup_interrupts();
-
-void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
-void spi_master_dma_exti_handler();
-void spi_int_func(void);
+void i2c_driver_setup();
 
 int main(void) {
-  // AFTER THIS, TRY OUT SLAVE MODE
-  // NEED TO GET INTERRUPT GOING
-  // ALSO NEED TO TEST OUT 16b
-
-  spi_driver_setup_interrupts();
-  spi_start_int_word_transfer(SPI_PORT);
-  WAIT(FAST);
-
   for (;;) {
-    GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 0);
-
-    // spi1, tx=enable, rx=enable
-    spi_enable_int_transfer(SPI_PORT, SPI_ENABLE, SPI_ENABLE);
-
-    WAIT(SLOW);
-
-    if (spi_finished_flag) {
-      spi_finished_flag = 0;
-      printf("%s\n", rx_word);
-      WAIT(FAST);
-      memset(&rx_word, 0, SIZEOF(rx_word));
-    }
   }
 }
 
-void SPI1_IRQHandler(void) {
-  static int cmd_or_sig = 0;  // 0 for command, 1 for signal
-  static int counter = 0;
-
-  // Heartbeat of this IRQ handling - This will either return SPI_INTERRUPT_TYPE_TX or SPI_INTERRUPT_TYPE_RX
-  // The function has its own internal "mutex" which locks the tx flag to it can't be activated until the RX
-  // has been activated. That is, if the RXNIE is activated.
-  SPIInterruptType_t irq_type = spi_irq_handling(SPI_PORT);
-
-  if (cmd_or_sig == 0) {
-    // COMMAND MODE - Sends command to arduino to send its board ID
-    // And if the byte is correct (ACK), it will proceed to the signal part of the
-    // method after.
-
-    const static uint8_t cmd_tx[2] = {COMMAND_ID_READ, 10};
-    static uint8_t cmd_rx[2] = {0};
-
-    if (irq_type == SPI_INTERRUPT_TYPE_TX) {
-      SPI_PORT->DR = cmd_tx[counter];
-    }
-
-    if (irq_type == SPI_INTERRUPT_TYPE_RX) {
-      cmd_rx[counter] = SPI_PORT->DR;
-      counter++;
-    }
-
-    if (counter >= 2) {
-      counter = 0;
-      if (cmd_rx[1] == ACK) {
-        // SUCCESS - Move to next part of algorithm
-        memset(cmd_rx, 0, SIZEOF(cmd_rx));
-        cmd_or_sig = 1;
-      } else {
-        // Failure - need to reset everything
-        spi_disable_int_transfer(SPI_PORT);
-        GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-      }
-    }
-
-  } else if (cmd_or_sig == 1) {
-    // SIGNAL MODE - This now just sends dummy bytes to the SPI
-    // register, which then now waits for the word to be loaded in
-    // of the ARDUINO BOARD ID
-    if (irq_type == SPI_INTERRUPT_TYPE_TX) {
-      SPI_PORT->DR = 0xFF;
-    }
-
-    if (irq_type == SPI_INTERRUPT_TYPE_RX) {
-      rx_word[counter] = SPI_PORT->DR;
-      counter++;
-    }
-
-    if (counter >= COMMAND_ID_LENGTH) {
-      counter = 0;
-      cmd_or_sig = 0;
-      spi_disable_int_transfer(SPI_PORT);
-      GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-      spi_finished_flag = 1;
-    }
-  }
-}
-
-void spi_driver_setup_interrupts() {
-  // 1.Write proper GPIO registers: Configure GPIO for MOSI, MISO and SCK pins.
-  GPIO_peri_clock_control(SPI_GPIO_PORT, GPIO_CLOCK_ENABLE);
-  GPIO_peri_clock_control(SPI_GPIO_NSS_PORT, GPIO_CLOCK_ENABLE);
+void i2c_driver_setup() {
+  GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_HIGH,
+                                   .speed = GPIO_SPEED_VERY_HIGH,
                                    .float_resistor = GPIO_PUPDR_NONE,
-                                   .output_type = GPIO_OP_TYPE_PUSHPULL,
-                                   .alt_func_num = 5};
-  GPIOHandle_t spi_gpio_clk_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_clk_handle.cfg.pin_number = SPI_GPIO_CLK_PIN;
-  GPIO_init(&spi_gpio_clk_handle);
+                                   .output_type = GPIO_OP_TYPE_OPENDRAIN,
+                                   .alt_func_num = 4};
 
-  GPIOHandle_t spi_gpio_miso_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_miso_handle.cfg.pin_number = SPI_GPIO_MISO_PIN;
-  GPIO_init(&spi_gpio_miso_handle);
+  GPIOHandle_t i2c_sda_handle = {.p_GPIO_addr = I2C_GPIO_PORT, .cfg = default_gpio_cfg};
+  i2c_sda_handle.cfg.pin_number = I2C_GPIO_SDA_PIN;
+  GPIO_init(&i2c_sda_handle);
 
-  GPIOHandle_t spi_gpio_mosi_handle = {.p_GPIO_addr = SPI_GPIO_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_mosi_handle.cfg.pin_number = SPI_GPIO_MOSI_PIN;
-  GPIO_init(&spi_gpio_mosi_handle);
-
-  GPIOHandle_t spi_gpio_nss_handle = {.p_GPIO_addr = SPI_GPIO_NSS_PORT, .cfg = default_gpio_cfg};
-  spi_gpio_nss_handle.cfg.pin_number = SPI_GPIO_NSS_PIN;
-  spi_gpio_nss_handle.cfg.alt_func_num = 0;
-  spi_gpio_nss_handle.cfg.mode = GPIO_MODE_OUT;
-  GPIO_init(&spi_gpio_nss_handle);
-  GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
-
-  spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
-  SPIHandle_t spi_handle = {.addr = SPI_PORT,
-                            .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_8,
-                                    .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
-                                    .device_mode = SPI_DEVICE_MODE_MASTER,
-                                    .dff = SPI_DFF_8_BIT,
-                                    .ssm = SPI_SSM_ENABLE,
-                                    .dma_setup = {.rx = SPI_DISABLE, .tx = SPI_DISABLE},
-                                    .enable_on_init = SPI_ENABLE}};
-  spi_init(&spi_handle);
-
-  NVIC_EnableIRQ(SPI1_IRQn);
+  GPIOHandle_t i2c_scl_handle = {.p_GPIO_addr = I2C_GPIO_PORT, .cfg = default_gpio_cfg};
+  i2c_scl_handle.cfg.pin_number = I2C_GPIO_SCL_PIN;
+  GPIO_init(&i2c_scl_handle);
 }

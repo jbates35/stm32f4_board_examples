@@ -28,7 +28,7 @@
 
 #include "stm32f446xx.h"
 #include "stm32f446xx_gpio.h"
-#include "stm32f446xx_spi.h"
+#include "stm32f446xx_i2c.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -46,6 +46,8 @@ int _write(int le, char *ptr, int len) {
 #define I2C_GPIO_SCL_PIN 8
 #define I2C_GPIO_SDA_PIN 9
 
+#define I2C_PORT I2C1
+
 #define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
 
 #define FAST 100000
@@ -59,6 +61,8 @@ int _write(int le, char *ptr, int len) {
 void i2c_driver_setup();
 
 int main(void) {
+  i2c_driver_setup();
+
   for (;;) {
   }
 }
@@ -78,4 +82,15 @@ void i2c_driver_setup() {
   GPIOHandle_t i2c_scl_handle = {.p_GPIO_addr = I2C_GPIO_PORT, .cfg = default_gpio_cfg};
   i2c_scl_handle.cfg.pin_number = I2C_GPIO_SCL_PIN;
   GPIO_init(&i2c_scl_handle);
+
+  i2c_peri_clock_control(I2C_PORT, I2C_ENABLE);
+  I2CHandle_t i2c_handle = {.addr = I2C_PORT,
+                            .cfg = {.peri_clock_freq_hz = (uint32_t)16E6,
+                                    .device_mode = I2C_DEVICE_MODE_MASTER,
+                                    .scl_mode = I2C_SCL_MODE_SPEED_FM,
+                                    .fm_duty_cycle = I2C_FM_DUTY_CYCLE_16_9,
+                                    .ack_enable = I2C_ENABLE,
+                                    .dma_enable = I2C_DISABLE,
+                                    .enable_on_init = I2C_ENABLE}};
+  i2c_init(&i2c_handle);
 }

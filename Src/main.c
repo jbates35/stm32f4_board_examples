@@ -63,7 +63,10 @@ void i2c_driver_setup();
 int main(void) {
   i2c_driver_setup();
 
+  char buff[] = "ASDF";
   for (;;) {
+    i2c_master_send(I2C_PORT, buff, SIZEOF(buff), 0x3);
+    WAIT(FAST);
   }
 }
 
@@ -87,9 +90,8 @@ void i2c_driver_setup() {
   I2CHandle_t i2c_handle = {.addr = I2C_PORT,
                             .cfg = {.peri_clock_freq_hz = (uint32_t)16E6,
                                     .device_mode = I2C_DEVICE_MODE_MASTER,
-                                    .scl_mode = I2C_SCL_MODE_SPEED_FM,
-                                    .fm_duty_cycle = I2C_FM_DUTY_CYCLE_16_9,
-                                    .ack_enable = I2C_ENABLE,
+                                    .scl_mode = I2C_SCL_MODE_SPEED_SM,
+                                    .ack_enable = I2C_DISABLE,
                                     .dma_enable = I2C_DISABLE,
                                     .enable_on_init = I2C_ENABLE}};
   i2c_init(&i2c_handle);

@@ -63,7 +63,7 @@ void i2c_driver_setup();
 int main(void) {
   i2c_driver_setup();
 
-  char buff[] = "ASDF";
+  uint8_t buff[5] = {0x40, 0x41, 0x42, 0x43, 0x44};
   for (;;) {
     i2c_master_send(I2C_PORT, buff, SIZEOF(buff), 0x3);
     WAIT(FAST);

@@ -24,7 +24,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "stm32f446xx.h"
 #include "stm32f446xx_gpio.h"

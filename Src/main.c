@@ -63,18 +63,23 @@ void i2c_driver_setup();
 int main(void) {
   i2c_driver_setup();
 
-  uint8_t addr = 0x68;
+  uint8_t gyro_addr = 0x68;
+  uint8_t wake_mpu[] = {0x6B, 0x00};
 
-  uint8_t tx_buff[14] = {0x6B, 0x0};
+  WAIT(SLOW);
+
+  i2c_master_send(I2C_PORT, wake_mpu, 2, gyro_addr, I2C_STOP);
+
+  uint8_t tx_byte = 0x3B;
   uint8_t rx_buff[14] = {0x0};
 
-  i2c_master_send(I2C_PORT, tx_buff, 2, addr, I2C_STOP);
-
-  tx_buff[0] = 0x3B;
+  I2C_PORT->CR1 &= ~(1 << I2C_CR1_PE_Pos);
+  for (int i = 0; i < 50; i++);
+  I2C_PORT->CR1 |= (1 << I2C_CR1_PE_Pos);
 
   for (;;) {
-    i2c_master_send(I2C_PORT, tx_buff, 1, addr, I2C_NO_STOP);
-    i2c_master_receive(I2C_PORT, rx_buff, 14, addr);
+    i2c_master_send(I2C_PORT, &tx_byte, 1, gyro_addr, I2C_NO_STOP);
+    i2c_master_receive(I2C_PORT, rx_buff, 14, gyro_addr);
 
     WAIT(SLOW);
   }
@@ -83,8 +88,8 @@ int main(void) {
 void i2c_driver_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_VERY_HIGH,
-                                   .float_resistor = GPIO_PUPDR_NONE,
+                                   .speed = GPIO_SPEED_LOW,
+                                   .float_resistor = GPIO_PUPDR_PULLUP,
                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
                                    .alt_func_num = 4};
 

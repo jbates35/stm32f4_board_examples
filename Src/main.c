@@ -65,17 +65,16 @@ int main(void) {
 
   uint8_t addr = 0x68;
 
-  uint8_t tx_buff[1] = {0x0};
-  uint8_t rx_byte;
+  uint8_t tx_buff[14] = {0x6B, 0x0};
+  uint8_t rx_buff[14] = {0x0};
+
+  i2c_master_send(I2C_PORT, tx_buff, 2, addr, I2C_STOP);
+
+  tx_buff[0] = 0x3B;
 
   for (;;) {
-    i2c_master_send(I2C_PORT, tx_buff, SIZEOF(tx_buff), addr, I2C_STOP);
-    i2c_master_receive(I2C_PORT, &rx_byte, 1, addr);
-
-    uint8_t ones = rx_byte & 0xF;
-    uint8_t tens = rx_byte >> 4;
-    uint16_t seconds = tens * 10 + ones;
-    printf("Seconds: %d\n", seconds);
+    i2c_master_send(I2C_PORT, tx_buff, 1, addr, I2C_NO_STOP);
+    i2c_master_receive(I2C_PORT, rx_buff, 14, addr);
 
     WAIT(SLOW);
   }

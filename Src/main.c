@@ -69,10 +69,19 @@ typedef struct {
 } MPU6050Data;
 
 MPU6050Data convert_gyro_data(uint8_t *buf);
-void i2c_driver_setup();
+void i2c_interrupt_driver_setup();
+
+static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
+
+typedef struct {
+  uint8_t arr[1000];
+  uint16_t len;
+  I2CTxRxDirection_t dir;
+} I2CBuff_t;
+I2CBuff_t i2c_buff = {0};
 
 int main(void) {
-  i2c_driver_setup();
+  i2c_interrupt_driver_setup();
 
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
@@ -81,27 +90,23 @@ int main(void) {
 
   printf("Starting...\n\n");
 
-  i2c_master_send(I2C_PORT, wake_mpu, 2, gyro_addr, I2C_STOP);
-
   uint8_t tx_byte = 0x3B;
   uint8_t rx_buff[14] = {0x0};
 
+  start_interrupt(I2C_PORT);
+
   for (;;) {
-    i2c_master_send(I2C_PORT, &tx_byte, 1, gyro_addr, I2C_NO_STOP);
-    i2c_master_receive(I2C_PORT, rx_buff, 14, gyro_addr);
-
-    MPU6050Data mpu_data = convert_gyro_data(rx_buff);
-
-    printf("Accel x: %d\n", mpu_data.accel_x);
-    printf("Accel y: %d\n", mpu_data.accel_y);
-    printf("Accel z: %d\n", mpu_data.accel_z);
-    printf("Gyro rx: %d\n", mpu_data.gyro_rx);
-    printf("Gyro ry: %d\n", mpu_data.gyro_ry);
-    printf("Gyro rz: %d\n", mpu_data.gyro_rz);
-    printf("MPU temperature: %f\n\n", mpu_data.temperature);
-
-    WAIT(SLOW);
   }
+}
+
+void I2C1_EV_IRQHandler(void) {
+  I2CInterruptType_t int_type = i2c_irq_event_handling(I2C1);
+  return;
+}
+
+void I2C1_ER_IRQHandler(void) {
+  I2CInterruptType_t int_type = i2c_irq_error_handling(I2C1);
+  return;
 }
 
 MPU6050Data convert_gyro_data(uint8_t *buf) {
@@ -120,7 +125,7 @@ MPU6050Data convert_gyro_data(uint8_t *buf) {
   return ret;
 }
 
-void i2c_driver_setup() {
+void i2c_interrupt_driver_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
                                    .speed = GPIO_SPEED_LOW,
@@ -144,4 +149,14 @@ void i2c_driver_setup() {
                                     .dma_enable = I2C_DISABLE,
                                     .enable_on_init = I2C_ENABLE}};
   i2c_init(&i2c_handle);
+
+  // Add interrupt stuff here
+  I2C_PORT->CR1 &= ~(1 << I2C_CR1_PE_Pos);
+
+  I2C_PORT->CR2 |= (I2C_CR2_ITEVTEN | I2C_CR2_ITERREN);
+  I2C_PORT->CR2 |= (I2C_CR2_ITBUFEN);
+
+  I2C_PORT->CR1 |= (1 << I2C_CR1_PE_Pos);
+  NVIC_EnableIRQ(I2C1_EV_IRQn);
+  NVIC_EnableIRQ(I2C1_ER_IRQn);
 }

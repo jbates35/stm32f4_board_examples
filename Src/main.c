@@ -59,13 +59,13 @@ int _write(int le, char *ptr, int len) {
   } while (0)
 
 typedef struct {
-  int a_x;   // Accelerometer x
-  int a_y;   // Accelerometer y
-  int a_z;   // Accelerometer z
-  int g_rx;  // Gyroscope rx
-  int g_ry;  // Gyroscope ry
-  int g_rz;  // Gyroscope rz
-  int temp;  // Temperature
+  int16_t accel_x;    // Accelerometer x
+  int16_t accel_y;    // Accelerometer y
+  int16_t accel_z;    // Accelerometer z
+  int16_t gyro_rx;    // Gyroscope rx
+  int16_t gyro_ry;    // Gyroscope ry
+  int16_t gyro_rz;    // Gyroscope rz
+  float temperature;  // Temperature
 } MPU6050Data;
 
 MPU6050Data convert_gyro_data(uint8_t *buf);
@@ -76,6 +76,8 @@ int main(void) {
 
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
+
+  WAIT(FAST);
 
   printf("Starting...\n\n");
 
@@ -90,13 +92,13 @@ int main(void) {
 
     MPU6050Data mpu_data = convert_gyro_data(rx_buff);
 
-    printf("Accel x: %d\n", mpu_data.a_x);
-    printf("Accel y: %d\n", mpu_data.a_y);
-    printf("Accel z: %d\n", mpu_data.a_z);
-    printf("Gyro rx: %d\n", mpu_data.g_rx);
-    printf("Gyro ry: %d\n", mpu_data.g_ry);
-    printf("Gyro rz: %d\n", mpu_data.g_rz);
-    printf("MPU temperature: %d\n\n", mpu_data.temp);
+    printf("Accel x: %d\n", mpu_data.accel_x);
+    printf("Accel y: %d\n", mpu_data.accel_y);
+    printf("Accel z: %d\n", mpu_data.accel_z);
+    printf("Gyro rx: %d\n", mpu_data.gyro_rx);
+    printf("Gyro ry: %d\n", mpu_data.gyro_ry);
+    printf("Gyro rz: %d\n", mpu_data.gyro_rz);
+    printf("MPU temperature: %f\n\n", mpu_data.temperature);
 
     WAIT(SLOW);
   }
@@ -105,13 +107,15 @@ int main(void) {
 MPU6050Data convert_gyro_data(uint8_t *buf) {
   MPU6050Data ret;
 
-  ret.a_x = (buf[0] << 8) + buf[1];
-  ret.a_y = (buf[2] << 8) + buf[3];
-  ret.a_z = (buf[4] << 8) + buf[5];
-  ret.temp = (int)(((float)(buf[6] << 8) + buf[7]) / 340 + 36);
-  ret.g_rx = (buf[8] << 8) + buf[9];
-  ret.g_ry = (buf[10] << 8) + buf[11];
-  ret.g_rz = (buf[12] << 8) + buf[13];
+  ret.accel_x = (uint16_t)(buf[0] << 8) | buf[1];
+  ret.accel_y = (uint16_t)(buf[2] << 8) | buf[3];
+  ret.accel_z = (uint16_t)(buf[4] << 8) | buf[5];
+  ret.gyro_rx = (uint16_t)(buf[8] << 8) | buf[9];
+  ret.gyro_ry = (uint16_t)(buf[10] << 8) | buf[11];
+  ret.gyro_rz = (uint16_t)(buf[12] << 8) | buf[13];
+
+  int16_t temp = (int16_t)((buf[6] << 8) | buf[7]) - 128;
+  ret.temperature = (float)temp / 340 + 36.53;
 
   return ret;
 }
@@ -119,7 +123,7 @@ MPU6050Data convert_gyro_data(uint8_t *buf) {
 void i2c_driver_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_MEDIUM,
+                                   .speed = GPIO_SPEED_LOW,
                                    .float_resistor = GPIO_PUPDR_NONE,
                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
                                    .alt_func_num = 4};

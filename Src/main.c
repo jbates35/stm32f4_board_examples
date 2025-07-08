@@ -71,14 +71,35 @@ typedef struct {
 MPU6050Data convert_gyro_data(uint8_t *buf);
 void i2c_interrupt_driver_setup();
 
-static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
-
 typedef struct {
   uint8_t arr[1000];
   uint16_t len;
-  I2CTxRxDirection_t dir;
+  uint16_t eles_left;
 } I2CBuff_t;
-I2CBuff_t i2c_buff = {0};
+I2CBuff_t i2c_tx_buff = {0};
+I2CBuff_t i2c_rx_buff = {0};
+
+static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
+static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
+static inline void init_xmission(I2C_TypeDef *i2c_reg) {
+  i2c_reg->CR2 |= I2C_CR2_ITBUFEN;
+  (void)i2c_reg->SR1;
+  (void)i2c_reg->SR2;
+}
+static inline void send_data(I2C_TypeDef *i2c_reg, I2CBuff_t *buff) {
+  if (buff->eles_left == 0 || buff->eles_left > buff->len) return;
+
+  int i = buff->len - buff->eles_left;
+  i2c_reg->DR = buff->arr[i];
+  buff->eles_left--;
+}
+static inline void end_tx(I2C_TypeDef *i2c_reg) {
+  if (i2c_reg->SR1 | I2C_SR1_BTF) {
+    i2c_reg->CR1 |= I2C_CR1_STOP;
+    i2c_reg->CR2 &= ~I2C_CR2_ITBUFEN;
+  }
+}
+static inline void receive_data(I2C_TypeDef *i2c_reg, I2CBuff_t *buff, uint8_t single_byte) {}
 
 int main(void) {
   i2c_interrupt_driver_setup();
@@ -93,6 +114,10 @@ int main(void) {
   uint8_t tx_byte = 0x3B;
   uint8_t rx_buff[14] = {0x0};
 
+  memcpy(i2c_tx_buff.arr, wake_mpu, SIZEOF(wake_mpu));
+  i2c_tx_buff.len = SIZEOF(wake_mpu);
+  i2c_tx_buff.eles_left = SIZEOF(wake_mpu);
+
   start_interrupt(I2C_PORT);
 
   for (;;) {
@@ -101,6 +126,17 @@ int main(void) {
 
 void I2C1_EV_IRQHandler(void) {
   I2CInterruptType_t int_type = i2c_irq_event_handling(I2C1);
+  // TX:
+  if (int_type == I2C_INT_TYPE_STARTED) {
+    send_addr(I2C_PORT, 0x68, 0);
+  } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
+    init_xmission(I2C_PORT);
+  } else if (int_type == I2C_INT_TYPE_TXE && i2c_tx_buff.eles_left) {
+    send_data(I2C_PORT, &i2c_tx_buff);
+  } else if (int_type == I2C_INT_TYPE_TXE) {
+    end_tx(I2C_PORT);
+  }
+
   return;
 }
 
@@ -154,7 +190,6 @@ void i2c_interrupt_driver_setup() {
   I2C_PORT->CR1 &= ~(1 << I2C_CR1_PE_Pos);
 
   I2C_PORT->CR2 |= (I2C_CR2_ITEVTEN | I2C_CR2_ITERREN);
-  I2C_PORT->CR2 |= (I2C_CR2_ITBUFEN);
 
   I2C_PORT->CR1 |= (1 << I2C_CR1_PE_Pos);
   NVIC_EnableIRQ(I2C1_EV_IRQn);

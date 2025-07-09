@@ -87,7 +87,16 @@ static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_C
 static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
 
 static inline void tx_cb() {}
-static inline void rx_cb() { convert_gyro_data(i2c_rx_buff.arr); }
+static inline void rx_cb() {
+  MPU6050Data mpu_data = convert_gyro_data(i2c_rx_buff.arr);
+  printf("Accel x: %d\n", mpu_data.accel_x);
+  printf("Accel y: %d\n", mpu_data.accel_y);
+  printf("Accel z: %d\n", mpu_data.accel_z);
+  printf("Gyro rx: %d\n", mpu_data.gyro_rx);
+  printf("Gyro ry: %d\n", mpu_data.gyro_ry);
+  printf("Gyro rz: %d\n", mpu_data.gyro_rz);
+  printf("MPU temperature: %f\n\n", mpu_data.temperature);
+}
 
 static inline void init_xmission(I2C_TypeDef *i2c_reg, uint8_t ack) {
   if (ack) i2c_reg->CR1 |= I2C_CR1_ACK;
@@ -266,7 +275,7 @@ void i2c_interrupt_driver_setup() {
   I2CHandle_t i2c_handle = {.addr = I2C_PORT,
                             .cfg = {.peri_clock_freq_hz = (uint32_t)16E6,
                                     .device_mode = I2C_DEVICE_MODE_MASTER,
-                                    .scl_mode = I2C_SCL_MODE_SPEED_SM,
+                                    .scl_mode = I2C_SCL_MODE_SPEED_FM,
                                     .dma_enable = I2C_DISABLE,
                                     .enable_on_init = I2C_ENABLE}};
   i2c_init(&i2c_handle);

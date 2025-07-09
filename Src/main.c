@@ -75,31 +75,78 @@ typedef struct {
   uint8_t arr[1000];
   uint16_t len;
   uint16_t eles_left;
+  uint8_t en;
 } I2CBuff_t;
+
 I2CBuff_t i2c_tx_buff = {0};
 I2CBuff_t i2c_rx_buff = {0};
+uint8_t tx_byte = 0x3B;
+uint8_t rx_buff[14] = {0x0};
 
 static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
 static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
-static inline void init_xmission(I2C_TypeDef *i2c_reg) {
+
+static inline void tx_cb() {}
+static inline void rx_cb() { convert_gyro_data(i2c_rx_buff.arr); }
+
+static inline void init_xmission(I2C_TypeDef *i2c_reg, uint8_t ack) {
+  if (ack) i2c_reg->CR1 |= I2C_CR1_ACK;
   i2c_reg->CR2 |= I2C_CR2_ITBUFEN;
   (void)i2c_reg->SR1;
   (void)i2c_reg->SR2;
 }
-static inline void send_data(I2C_TypeDef *i2c_reg, I2CBuff_t *buff) {
-  if (buff->eles_left == 0 || buff->eles_left > buff->len) return;
 
-  int i = buff->len - buff->eles_left;
-  i2c_reg->DR = buff->arr[i];
-  buff->eles_left--;
+static inline void send_data(I2C_TypeDef *i2c_reg, I2CBuff_t *tx_buff) {
+  if (tx_buff->eles_left == 0 || tx_buff->eles_left > tx_buff->len) return;
+
+  int i = tx_buff->len - tx_buff->eles_left;
+  i2c_reg->DR = tx_buff->arr[i];
+  tx_buff->eles_left--;
 }
-static inline void end_tx(I2C_TypeDef *i2c_reg) {
+
+static inline void end_tx(I2C_TypeDef *i2c_reg, I2CBuff_t *tx_buff, I2CBuff_t *rx_buff) {
   if (i2c_reg->SR1 | I2C_SR1_BTF) {
-    i2c_reg->CR1 |= I2C_CR1_STOP;
+    if (!rx_buff->en) i2c_reg->CR1 |= I2C_CR1_STOP;
     i2c_reg->CR2 &= ~I2C_CR2_ITBUFEN;
   }
+
+  tx_buff->en = 0;
+
+  tx_cb();
+
+  if (rx_buff->en) i2c_reg->CR1 |= I2C_CR1_START;
 }
-static inline void receive_data(I2C_TypeDef *i2c_reg, I2CBuff_t *buff, uint8_t single_byte) {}
+
+static inline void single_byte_rx_handler(I2C_TypeDef *i2c_reg, I2CBuff_t *rx_buff) {
+  if (rx_buff->len != 1) return;
+
+  // Set ack low and set stop bit high
+  i2c_reg->CR1 &= ~(1 << I2C_CR1_ACK_Pos);
+  i2c_reg->CR1 |= (1 << I2C_CR1_STOP_Pos);
+
+  // Clear flags
+  (void)i2c_reg->SR1;
+  (void)i2c_reg->SR2;
+}
+
+static inline void receive_data(I2C_TypeDef *i2c_reg, I2CBuff_t *rx_buff) {
+  if (rx_buff->eles_left == 0 || rx_buff->eles_left > rx_buff->len) return;
+
+  if (rx_buff->eles_left == 2) {
+    i2c_reg->CR1 &= ~(1 << I2C_CR1_ACK_Pos);
+    i2c_reg->CR1 |= (1 << I2C_CR1_STOP_Pos);
+  }
+
+  int i = rx_buff->len - rx_buff->eles_left;
+  rx_buff->arr[i] = (uint8_t)i2c_reg->DR;
+  rx_buff->eles_left--;
+
+  if (!rx_buff->eles_left) {
+    i2c_reg->CR2 &= ~I2C_CR2_ITBUFEN;
+    rx_buff->en = 0;
+    rx_cb();
+  }
+}
 
 int main(void) {
   i2c_interrupt_driver_setup();
@@ -111,30 +158,68 @@ int main(void) {
 
   printf("Starting...\n\n");
 
-  uint8_t tx_byte = 0x3B;
-  uint8_t rx_buff[14] = {0x0};
-
   memcpy(i2c_tx_buff.arr, wake_mpu, SIZEOF(wake_mpu));
   i2c_tx_buff.len = SIZEOF(wake_mpu);
   i2c_tx_buff.eles_left = SIZEOF(wake_mpu);
+  i2c_tx_buff.en = 1;
+
+  start_interrupt(I2C_PORT);
+
+  WAIT(FAST);
+
+  i2c_tx_buff.arr[0] = tx_byte;
+  i2c_tx_buff.len = 1;
+  i2c_tx_buff.eles_left = 1;
+  i2c_tx_buff.en = 1;
+
+  memcpy(i2c_rx_buff.arr, rx_buff, SIZEOF(rx_buff));
+  i2c_rx_buff.len = SIZEOF(rx_buff);
+  i2c_rx_buff.eles_left = SIZEOF(rx_buff);
+  i2c_rx_buff.en = 1;
 
   start_interrupt(I2C_PORT);
 
   for (;;) {
+    WAIT(SLOW);
+    i2c_tx_buff.arr[0] = tx_byte;
+    i2c_tx_buff.len = 1;
+    i2c_tx_buff.eles_left = 1;
+    i2c_tx_buff.en = 1;
+
+    memcpy(i2c_rx_buff.arr, rx_buff, SIZEOF(rx_buff));
+    i2c_rx_buff.len = SIZEOF(rx_buff);
+    i2c_rx_buff.eles_left = SIZEOF(rx_buff);
+    i2c_rx_buff.en = 1;
+
+    start_interrupt(I2C_PORT);
+    WAIT(FAST);
+    int breakpointhere = 0;
   }
 }
 
 void I2C1_EV_IRQHandler(void) {
   I2CInterruptType_t int_type = i2c_irq_event_handling(I2C1);
   // TX:
-  if (int_type == I2C_INT_TYPE_STARTED) {
-    send_addr(I2C_PORT, 0x68, 0);
-  } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
-    init_xmission(I2C_PORT);
-  } else if (int_type == I2C_INT_TYPE_TXE && i2c_tx_buff.eles_left) {
-    send_data(I2C_PORT, &i2c_tx_buff);
-  } else if (int_type == I2C_INT_TYPE_TXE) {
-    end_tx(I2C_PORT);
+  if (i2c_tx_buff.en) {
+    if (int_type == I2C_INT_TYPE_STARTED) {
+      send_addr(I2C_PORT, 0x68, 0);
+    } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
+      init_xmission(I2C_PORT, 0);
+    } else if (int_type == I2C_INT_TYPE_TXE && i2c_tx_buff.eles_left) {
+      send_data(I2C_PORT, &i2c_tx_buff);
+    } else if (int_type == I2C_INT_TYPE_TXE) {
+      end_tx(I2C_PORT, &i2c_tx_buff, &i2c_rx_buff);
+    }
+  } else if (i2c_rx_buff.en) {
+    // RX:
+    if (int_type == I2C_INT_TYPE_STARTED) {
+      send_addr(I2C_PORT, 0x68, 1);
+    } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
+      init_xmission(I2C_PORT, 1);
+      single_byte_rx_handler(I2C_PORT, &i2c_rx_buff);
+    } else if (int_type == I2C_INT_TYPE_RXNE && i2c_rx_buff.eles_left) {
+      receive_data(I2C_PORT, &i2c_rx_buff);
+    }
   }
 
   return;

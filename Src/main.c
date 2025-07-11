@@ -83,10 +83,7 @@ I2CBuff_t i2c_rx_buff = {0};
 uint8_t tx_byte = 0x3B;
 uint8_t rx_buff[14] = {0x0};
 
-static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
-static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
-
-static inline void tx_cb() {}
+static inline void tx_callback() {}
 static inline void rx_cb() {
   MPU6050Data mpu_data = convert_gyro_data(i2c_rx_buff.arr);
   printf("Accel x: %d\n", mpu_data.accel_x);
@@ -98,6 +95,8 @@ static inline void rx_cb() {
   printf("MPU temperature: %f\n\n", mpu_data.temperature);
 }
 
+static inline void start_interrupt(I2C_TypeDef *i2c_reg) { i2c_reg->CR1 |= I2C_CR1_START; }
+static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
 static inline void init_xmission(I2C_TypeDef *i2c_reg, uint8_t ack) {
   if (ack) i2c_reg->CR1 |= I2C_CR1_ACK;
   i2c_reg->CR2 |= I2C_CR2_ITBUFEN;
@@ -114,16 +113,15 @@ static inline void send_data(I2C_TypeDef *i2c_reg, I2CBuff_t *tx_buff) {
 }
 
 static inline void end_tx(I2C_TypeDef *i2c_reg, I2CBuff_t *tx_buff, I2CBuff_t *rx_buff) {
-  if (i2c_reg->SR1 | I2C_SR1_BTF) {
-    if (!rx_buff->en) i2c_reg->CR1 |= I2C_CR1_STOP;
-    i2c_reg->CR2 &= ~I2C_CR2_ITBUFEN;
-  }
+  if (!(i2c_reg->SR1 & I2C_SR1_BTF)) return;
+
+  i2c_reg->CR2 &= ~I2C_CR2_ITBUFEN;
+  if (!rx_buff->en)
+    i2c_reg->CR1 |= I2C_CR1_STOP;
+  else
+    i2c_reg->CR1 |= I2C_CR1_START;
 
   tx_buff->en = 0;
-
-  tx_cb();
-
-  if (rx_buff->en) i2c_reg->CR1 |= I2C_CR1_START;
 }
 
 static inline void single_byte_rx_handler(I2C_TypeDef *i2c_reg, I2CBuff_t *rx_buff) {

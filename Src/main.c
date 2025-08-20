@@ -205,26 +205,26 @@ int main(void) {
 }
 
 void I2C1_EV_IRQHandler(void) {
-  I2CInterruptType_t int_type = i2c_irq_event_handling(I2C1);
+  I2CIRQType_t int_type = i2c_irq_event_handling(I2C1);
   // TX:
   if (i2c_tx_buff.en) {
-    if (int_type == I2C_INT_TYPE_STARTED) {
+    if (int_type == I2C_IRQ_TYPE_STARTED) {
       send_addr(I2C_PORT, 0x68, 0);
-    } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
+    } else if (int_type == I2C_IRQ_TYPE_ADDR_SENT) {
       init_xmission(I2C_PORT, 0);
-    } else if (int_type == I2C_INT_TYPE_TXE && i2c_tx_buff.eles_left) {
+    } else if (int_type == I2C_IRQ_TYPE_TXE && i2c_tx_buff.eles_left) {
       send_data(I2C_PORT, &i2c_tx_buff);
-    } else if (int_type == I2C_INT_TYPE_TXE) {
+    } else if (int_type == I2C_IRQ_TYPE_TXE) {
       end_tx(I2C_PORT, &i2c_tx_buff, &i2c_rx_buff);
     }
   } else if (i2c_rx_buff.en) {
     // RX:
-    if (int_type == I2C_INT_TYPE_STARTED) {
+    if (int_type == I2C_IRQ_TYPE_STARTED) {
       send_addr(I2C_PORT, 0x68, 1);
-    } else if (int_type == I2C_INT_TYPE_ADDR_SENT) {
+    } else if (int_type == I2C_IRQ_TYPE_ADDR_SENT) {
       init_xmission(I2C_PORT, 1);
       single_byte_rx_handler(I2C_PORT, &i2c_rx_buff);
-    } else if (int_type == I2C_INT_TYPE_RXNE && i2c_rx_buff.eles_left) {
+    } else if (int_type == I2C_IRQ_TYPE_RXNE && i2c_rx_buff.eles_left) {
       receive_data(I2C_PORT, &i2c_rx_buff);
     }
   }
@@ -233,7 +233,7 @@ void I2C1_EV_IRQHandler(void) {
 }
 
 void I2C1_ER_IRQHandler(void) {
-  I2CInterruptType_t int_type = i2c_irq_error_handling(I2C1);
+  I2CIRQType_t int_type = i2c_irq_error_handling(I2C1);
   return;
 }
 

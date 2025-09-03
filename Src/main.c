@@ -80,8 +80,6 @@ typedef struct {
 
 I2CBuff_t i2c_tx_buff = {0};
 I2CBuff_t i2c_rx_buff = {0};
-uint8_t tx_byte = 0x3B;
-uint8_t rx_buff[14] = {0x0};
 
 static inline void tx_callback() {}
 static inline void rx_cb() {
@@ -95,34 +93,60 @@ static inline void rx_cb() {
   printf("MPU temperature: %f\n\n", mpu_data.temperature);
 }
 
-I2CInterruptConfig_t int_setup;
+uint8_t tx_byte = 0x3B;
+uint8_t rx_buff[14] = {0x0};
+
 int main(void) {
   i2c_interrupt_driver_setup();
 
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
 
-  WAIT(FAST);
+  WAIT(SLOW);
 
   printf("Starting...\n\n");
 
-  const I2CInterruptConfig_t int_setup = {.tx = {.len = 1, .buff = &wake_mpu},
-                                          .rx = {.len = 0},
-                                          .address = gyro_addr,
-                                          .circular = I2C_INTERRUPT_NON_CIRCULAR};
+  I2CInterruptConfig_t startup_int_setup = {.tx = {.len = SIZEOF(wake_mpu), .buff = wake_mpu},
+                                            .rx = {.len = 0},
+                                            .address = gyro_addr,
+                                            .circular = I2C_INTERRUPT_NON_CIRCULAR};
 
-  i2c_setup_interrupt(I2C1, int_setup);
+  i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_SEND, I2C_ENABLE);
+  i2c_setup_interrupt(I2C1, startup_int_setup);
+  WAIT(SLOW);
+
+  i2c_start_interrupt(I2C1);
+  WAIT(SLOW);
+
+  I2CInterruptConfig_t normal_int_setup = {.tx = {.len = 1, .buff = &tx_byte},
+                                           .rx = {.len = SIZEOF(rx_buff), .buff = rx_buff},
+                                           .address = gyro_addr,
+                                           .circular = I2C_INTERRUPT_NON_CIRCULAR};
+
   i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_SEND, I2C_ENABLE);
   i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_RECEIVE, I2C_ENABLE);
-  WAIT(FAST);
-  i2c_start_interrupt(I2C1);
+
+  i2c_setup_interrupt(I2C1, normal_int_setup);
 
   for (;;) {
-    WAIT(FAST);
+    i2c_start_interrupt(I2C1);
+    WAIT(MEDIUM);
   }
 }
 
-void I2C1_EV_IRQHandler(void) { i2c_irq_word_handling(I2C1); }
+void I2C1_EV_IRQHandler(void) {
+  I2CInterruptStatus_t int_status = i2c_irq_word_handling(I2C1);
+  if (int_status == I2C_INTERRUPT_STATUS_DONE) {
+    MPU6050Data mpu_data = convert_gyro_data(rx_buff);
+    printf("Accel x: %d\n", mpu_data.accel_x);
+    printf("Accel y: %d\n", mpu_data.accel_y);
+    printf("Accel z: %d\n", mpu_data.accel_z);
+    printf("Gyro rx: %d\n", mpu_data.gyro_rx);
+    printf("Gyro ry: %d\n", mpu_data.gyro_ry);
+    printf("Gyro rz: %d\n", mpu_data.gyro_rz);
+    printf("MPU temperature: %f\n\n", mpu_data.temperature);
+  }
+}
 
 void I2C1_ER_IRQHandler(void) {
   I2CIRQType_t int_type = i2c_irq_error_handling(I2C1);
@@ -165,7 +189,7 @@ void i2c_interrupt_driver_setup() {
   I2CHandle_t i2c_handle = {.addr = I2C_PORT,
                             .cfg = {.peri_clock_freq_hz = (uint32_t)16E6,
                                     .device_mode = I2C_DEVICE_MODE_MASTER,
-                                    .scl_mode = I2C_SCL_MODE_SPEED_FM,
+                                    .scl_mode = I2C_SCL_MODE_SPEED_SM,
                                     .dma_enable = I2C_DISABLE,
                                     .enable_on_init = I2C_ENABLE}};
   i2c_init(&i2c_handle);

@@ -88,9 +88,9 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
   TimerHandle_t adc_tim_handle = {.cfg = {.channel_1 =
                                               {
                                                   .channel_mode = TIMER_CHANNEL_MODE_COMPARE,
-                                                  .gpio_en = TIMER_GPIO_DISABLE,
+                                                  .gpio_en = TIMER_DISABLE,
                                                   .ccr = 0x7fff,
-                                                  .interrupt_en = TIMER_INTERRUPT_ENABLE,
+                                                  .interrupt_en = TIMER_ENABLE,
                                               },
                                           .trigger_assignment = TIMER_TRIGGER_ASSIGNMENT_CH1,
                                           .channel_count = 1,
@@ -112,14 +112,14 @@ void adc_tim_scan_example(volatile uint16_t *out_arr, const uint8_t arr_len) {
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =
                   {
-                      .full_transfer = DMA_INTERRUPT_ENABLE,
-                      .transfer_error = DMA_INTERRUPT_DISABLE,
-                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
-                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                      .full_transfer = DMA_ENABLE,
+                      .transfer_error = DMA_DISABLE,
+                      .direct_mode_error = DMA_DISABLE,
+                      .half_transfer = DMA_DISABLE,
                   },
-              .start_enabled = DMA_START_ENABLED},
+              .start_enabled = DMA_ENABLE},
       .p_stream_addr = DMA2_Stream0};
-  dma_peri_clock_control(DMA2, DMA_PERI_CLOCK_ENABLE);
+  dma_peri_clock_control(DMA2, DMA_ENABLE);
   dma_stream_init(&adc_dma_handle);
   NVIC_EnableIRQ(DMA2_Stream0_IRQn);
 

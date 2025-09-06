@@ -4,6 +4,7 @@
 #include "stm32f446xx.h"
 #include "stm32f446xx_gpio.h"
 #include "stm32f446xx_i2c.h"
+#include "stm32f446xx_tim.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
 #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -60,12 +61,11 @@ static MPU6050Data convert_gyro_data(const uint8_t *buf) {
 }
 
 void i2c_interrupt_driver_setup();
+void i2c_timer_setup();
 
 uint8_t tx_byte = 0x3B;
 uint8_t rx_buff[14] = {0x0};
-uint8_t main_program_started = 0;
 
-static inline void tx_callback() {}
 static inline void rx_cb(void) {
   MPU6050Data mpu_data = convert_gyro_data(rx_buff);
   printf("Accel x: %d\n", mpu_data.accel_x);
@@ -75,12 +75,25 @@ static inline void rx_cb(void) {
   printf("Gyro ry: %d\n", mpu_data.gyro_ry);
   printf("Gyro rz: %d\n", mpu_data.gyro_rz);
   printf("MPU temperature: %f\n\n", mpu_data.temperature);
-  WAIT(MEDIUM);
-  i2c_reset_interrupt(I2C1);
+
+  // ENABLE TIMER INTERRUPT
+  timer_enable(TIM8);
+}
+
+static inline void setup_rx_cb(void) {
+  uint8_t gyro_addr = 0x68;
+  I2CInterruptConfig_t normal_int_setup = {.tx = {.len = 1, .buff = &tx_byte},
+                                           .rx = {.len = SIZEOF(rx_buff), .buff = rx_buff},
+                                           .address = gyro_addr,
+                                           .circular = I2C_INTERRUPT_NON_CIRCULAR};
+
+  i2c_setup_interrupt(I2C1, normal_int_setup);
+  i2c_assign_interrupt_cb(I2C1, rx_cb);
   i2c_start_interrupt(I2C1);
 }
 
 int main(void) {
+  i2c_timer_setup();
   i2c_interrupt_driver_setup();
 
   uint8_t gyro_addr = 0x68;
@@ -94,26 +107,10 @@ int main(void) {
                                             .rx = {.len = 0},
                                             .address = gyro_addr,
                                             .circular = I2C_INTERRUPT_NON_CIRCULAR};
-
-  i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_SEND, I2C_ENABLE);
-  i2c_setup_interrupt(I2C1, startup_int_setup);
-  WAIT(SLOW);
-
-  i2c_start_interrupt(I2C1);
-  WAIT(SLOW);
-
-  I2CInterruptConfig_t normal_int_setup = {.tx = {.len = 1, .buff = &tx_byte},
-                                           .rx = {.len = SIZEOF(rx_buff), .buff = rx_buff},
-                                           .address = gyro_addr,
-                                           .circular = I2C_INTERRUPT_NON_CIRCULAR};
-
   i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_SEND, I2C_ENABLE);
   i2c_enable_interrupt(I2C1, I2C_TXRX_DIR_RECEIVE, I2C_ENABLE);
-
-  i2c_setup_interrupt(I2C1, normal_int_setup);
-  main_program_started = 1;
-
-  i2c_assign_interrupt_cb(I2C1, rx_cb);
+  i2c_setup_interrupt(I2C1, startup_int_setup);
+  i2c_assign_interrupt_cb(I2C1, setup_rx_cb);
   i2c_start_interrupt(I2C1);
 
   for (;;) {
@@ -121,21 +118,21 @@ int main(void) {
   }
 }
 
-void I2C1_EV_IRQHandler(void) {
-  I2CInterruptStatus_t int_status = i2c_irq_word_handling(I2C1);
-  if (main_program_started && int_status == I2C_INTERRUPT_STATUS_DONE) {
-  }
-}
+void I2C1_EV_IRQHandler(void) { i2c_irq_word_handling(I2C1); }
 
-void I2C1_ER_IRQHandler(void) {
-  I2CIRQType_t int_type = i2c_irq_error_handling(I2C1);
-  return;
+void I2C1_ER_IRQHandler(void) { i2c_irq_error_handling(I2C1); }
+
+void TIM8_CC_IRQHandler(void) {
+  if (timer_irq_handling(TIM8, 1)) {
+    i2c_reset_interrupt(I2C1);
+    i2c_start_interrupt(I2C1);
+  }
 }
 
 void i2c_interrupt_driver_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_LOW,
+                                   .speed = GPIO_SPEED_MEDIUM,
                                    .float_resistor = GPIO_PUPDR_NONE,
                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
                                    .alt_func_num = 4};
@@ -165,4 +162,24 @@ void i2c_interrupt_driver_setup() {
   I2C_PORT->CR1 |= (1 << I2C_CR1_PE_Pos);
   NVIC_EnableIRQ(I2C1_EV_IRQn);
   NVIC_EnableIRQ(I2C1_ER_IRQn);
+}
+
+void i2c_timer_setup() {
+  TimerHandle_t i2c_tim_handle = {.cfg = {.channel_1 =
+                                              {
+                                                  .channel_mode = TIMER_CHANNEL_MODE_COMPARE,
+                                                  .gpio_en = TIMER_DISABLE,
+                                                  .ccr = 0xFFFF,
+                                                  .interrupt_en = TIMER_ENABLE,
+                                              },
+                                          .one_shot_enabled = TIMER_ENABLE,
+                                          .start_enabled = TIMER_DISABLE,
+                                          .channel_count = 1,
+                                          .direction = TIMER_DIR_UP,
+                                          .arr = 0xFFFF,
+                                          .prescaler = 60},
+                                  .p_base_addr = TIM8};
+  timer_peri_clock_control(TIM8, 1);
+  timer_init(&i2c_tim_handle);
+  NVIC_EnableIRQ(TIM8_CC_IRQn);
 }

@@ -99,7 +99,7 @@ int main(void) {
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
 
-  WAIT(SLOW);
+  WAIT(FAST);
 
   printf("Starting...\n\n");
 
@@ -120,7 +120,14 @@ int main(void) {
 
 void I2C1_EV_IRQHandler(void) { i2c_irq_word_handling(I2C1); }
 
-void I2C1_ER_IRQHandler(void) { i2c_irq_error_handling(I2C1); }
+void I2C1_ER_IRQHandler(void) {
+  I2CIRQType_t irq_error = i2c_irq_error_handling(I2C1);
+
+  if (irq_error == I2C_IRQ_TYPE_ERROR_ACKFAIL) {
+    i2c_reset_interrupt(I2C1);
+    i2c_start_interrupt(I2C1);
+  }
+}
 
 void TIM8_CC_IRQHandler(void) {
   if (timer_irq_handling(TIM8, 1)) {

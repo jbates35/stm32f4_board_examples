@@ -165,13 +165,6 @@ void i2c_int_setup() {
                                     .dma_enable = I2C_DISABLE,
                                     .enable_on_init = I2C_ENABLE}};
   i2c_init(&i2c_handle);
-
-  // Add interrupt stuff here
-  I2C_PORT->CR1 &= ~(1 << I2C_CR1_PE_Pos);
-
-  I2C_PORT->CR2 |= (I2C_CR2_ITEVTEN | I2C_CR2_ITERREN);
-
-  I2C_PORT->CR1 |= (1 << I2C_CR1_PE_Pos);
   NVIC_EnableIRQ(I2C1_EV_IRQn);
   NVIC_EnableIRQ(I2C1_ER_IRQn);
 }

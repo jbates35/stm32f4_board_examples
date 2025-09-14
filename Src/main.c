@@ -41,6 +41,7 @@ int _write(int le, char *ptr, int len) {
 
 #define TEST_SIG(state) GPIO_set_output(GPIOA, 0, state)
 
+#define VERY_FAST 16
 #define FAST 100000
 #define MEDIUM 300000
 #define SLOW 1000000
@@ -49,6 +50,7 @@ int _write(int le, char *ptr, int len) {
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
+void i2c_bus_reset_routine(GPIO_TypeDef *scl_gpio_port, const uint8_t scl_pin);
 void i2c_dma_setup();
 void i2c_timer_setup();
 void setup_test_sig();
@@ -140,7 +142,9 @@ void express_data(void) {
 }
 
 int main(void) {
+  i2c_bus_reset_routine(I2C_GPIO_PORT, I2C_GPIO_SCL_PIN);
   WAIT(FAST);
+
   i2c_timer_setup();
   i2c_dma_setup();
   setup_test_sig();
@@ -151,9 +155,6 @@ int main(void) {
   WAIT(FAST);
 
   printf("Assigning DMA\n");
-  i2c_timer_setup();
-  i2c_dma_setup();
-
   dma_set_buffer(I2C_DMA_TX_STREAM, &wake_mpu, DMA_ADDRESS_MEMORY_0);
 
   WAIT(FAST);
@@ -231,15 +232,32 @@ void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) {
   }
 }
 
+void i2c_bus_reset_routine(GPIO_TypeDef *scl_gpio_port, const uint8_t scl_pin) {
+  GPIO_peri_clock_control(scl_gpio_port, GPIO_CLOCK_ENABLE);
+
+  GPIOConfig_t dummy_toggles_cfg = {.mode = GPIO_MODE_OUT,
+                                    .speed = GPIO_SPEED_HIGH,
+                                    .float_resistor = GPIO_PUPDR_NONE,
+                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
+                                    .alt_func_num = 4,
+                                    .pin_number = scl_pin};
+  GPIOHandle_t dummy_toggles = {.p_GPIO_addr = scl_gpio_port, .cfg = dummy_toggles_cfg};
+  GPIO_init(&dummy_toggles);
+
+  GPIO_set_output(scl_gpio_port, scl_pin, 1);
+
+  for (int i = 0; i < 9; i++) {
+    GPIO_set_output(scl_gpio_port, scl_pin, 0);
+    WAIT(VERY_FAST);
+    GPIO_set_output(scl_gpio_port, scl_pin, 1);
+    WAIT(VERY_FAST);
+  }
+}
+
 void i2c_dma_setup() {
-  i2c_peri_clock_control(I2C_PORT, I2C_DISABLE);
-  GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_DISABLE);
-
-  WAIT(MEDIUM);
-
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_MEDIUM,
+                                   .speed = GPIO_SPEED_HIGH,
                                    .float_resistor = GPIO_PUPDR_NONE,
                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
                                    .alt_func_num = 4};
@@ -251,8 +269,6 @@ void i2c_dma_setup() {
   GPIOHandle_t i2c_scl_handle = {.p_GPIO_addr = I2C_GPIO_PORT, .cfg = default_gpio_cfg};
   i2c_scl_handle.cfg.pin_number = I2C_GPIO_SCL_PIN;
   GPIO_init(&i2c_scl_handle);
-
-  WAIT(FAST);
 
   dma_peri_clock_control(I2C_DMA_TX_PORT, DMA_ENABLE);
   DMAHandle_t dma_tx_handle = {

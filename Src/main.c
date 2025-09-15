@@ -50,7 +50,6 @@ int _write(int le, char *ptr, int len) {
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
-void i2c_bus_reset_routine(GPIO_TypeDef *scl_gpio_port, const uint8_t scl_pin);
 void i2c_dma_setup();
 void i2c_timer_setup();
 void setup_test_sig();
@@ -65,10 +64,14 @@ uint8_t setup_done = 0;
 uint8_t tx_done = 0;
 uint8_t tx_len = 0;
 uint8_t rx_len = 0;
+uint8_t txrx_busy = 0;
 
 void (*timer_callback)(void) = NULL;
 
-void start_interrupt_cb(void) { i2c_start_interrupt(I2C1); }
+void start_interrupt_cb(void) {
+  int breakpoint = 0;
+  i2c_start_interrupt(I2C1);
+}
 
 static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
 
@@ -84,16 +87,23 @@ static inline void init_dma_xmission(I2C_TypeDef *i2c_reg, uint8_t rx) {
   (void)i2c_reg->SR2;
 
   if (rx) {
+    i2c_reg->CR2 |= I2C_CR2_LAST;
     dma_start_transfer(I2C_DMA_RX_STREAM, rx_len);
   } else {
+    i2c_reg->CR2 &= ~I2C_CR2_LAST;
     dma_start_transfer(I2C_DMA_TX_STREAM, tx_len);
   }
 }
 
-static inline void end_send_data(I2C_TypeDef *i2c_reg, uint8_t repeated_start) {
+static inline void end_send_data(I2C_TypeDef *i2c_reg, uint8_t rx, uint8_t repeated_start) {
   // After TXE, need to make sure shift register is also cleared
   i2c_reg->CR2 &= ~(I2C_CR2_DMAEN);
-  while (!(i2c_reg->SR1 & I2C_SR1_BTF));
+
+  if (rx) {
+    i2c_reg->CR1 &= ~I2C_CR1_ACK;
+  } else {
+    while (!(i2c_reg->SR1 & I2C_SR1_BTF));
+  }
 
   if (repeated_start)
     i2c_reg->CR1 |= I2C_CR1_START;
@@ -142,7 +152,8 @@ void express_data(void) {
 }
 
 int main(void) {
-  i2c_bus_reset_routine(I2C_GPIO_PORT, I2C_GPIO_SCL_PIN);
+  GPIO_i2c_bus_reset(I2C_GPIO_PORT, I2C_GPIO_SCL_PIN);
+
   WAIT(FAST);
 
   i2c_timer_setup();
@@ -152,14 +163,10 @@ int main(void) {
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
 
-  WAIT(FAST);
-
   printf("Assigning DMA\n");
   dma_set_buffer(I2C_DMA_TX_STREAM, &wake_mpu, DMA_ADDRESS_MEMORY_0);
 
-  WAIT(FAST);
   printf("Starting...\n\n");
-
   tx_done = 0;
   tx_len = 2;
   i2c_start_interrupt(I2C1);
@@ -172,23 +179,28 @@ int main(void) {
 void I2C1_EV_IRQHandler(void) {
   I2CIRQType_t irq_reason = i2c_irq_event_handling(I2C1);
   // TX:
-  if (irq_reason == I2C_IRQ_TYPE_STARTED && !tx_done) {
-    send_addr(I2C1, 0x68, 0);
-  } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
-    init_dma_xmission(I2C1, 0);
+
+  if (!tx_done) {
+    if (irq_reason == I2C_IRQ_TYPE_STARTED) {
+      send_addr(I2C1, 0x68, 0);
+    } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
+      init_dma_xmission(I2C1, 0);
+    }
   }
   // RX:
-  if (irq_reason == I2C_IRQ_TYPE_STARTED && tx_done) {
-    send_addr(I2C1, 0x68, 1);
-  } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
-    init_dma_xmission(I2C1, 1);
+  if (tx_done) {
+    if (irq_reason == I2C_IRQ_TYPE_STARTED) {
+      send_addr(I2C1, 0x68, 1);
+    } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
+      init_dma_xmission(I2C1, 1);
+    }
   }
 }
 
 void I2C1_ER_IRQHandler(void) {
   I2CIRQType_t irq_error = i2c_irq_error_handling(I2C1);
   if (irq_error == I2C_IRQ_TYPE_ERROR_ACKFAIL) {
-    // i2c_reset_interrupt(I2C1);
+    printf("Error...\n");
     i2c_start_interrupt(I2C1);
   }
 }
@@ -203,7 +215,7 @@ void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) {
   if (dma_irq_handling(I2C_DMA_TX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
     if (!setup_done) {
       setup_done = 1;
-      end_send_data(I2C_PORT, 0);
+      end_send_data(I2C_PORT, 0, 0);
 
       // Set main sequence
       tx_len = SIZEOF(tx_buff);
@@ -215,7 +227,7 @@ void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) {
       timer_callback = start_interrupt_cb;
       timer_enable(TIM8);
     } else {
-      end_send_data(I2C_PORT, 1);
+      end_send_data(I2C_PORT, 0, 1);
       tx_done = 1;
       i2c_start_interrupt(I2C_PORT);
     }
@@ -224,7 +236,7 @@ void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) {
 
 void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) {
   if (dma_irq_handling(I2C_DMA_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
-    end_send_data(I2C_PORT, 0);
+    end_send_data(I2C_PORT, 1, 0);
     tx_done = 0;
     express_data();
     // ENABLE TIMER INTERRUPT (ONE-SHOT)
@@ -232,32 +244,10 @@ void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) {
   }
 }
 
-void i2c_bus_reset_routine(GPIO_TypeDef *scl_gpio_port, const uint8_t scl_pin) {
-  GPIO_peri_clock_control(scl_gpio_port, GPIO_CLOCK_ENABLE);
-
-  GPIOConfig_t dummy_toggles_cfg = {.mode = GPIO_MODE_OUT,
-                                    .speed = GPIO_SPEED_HIGH,
-                                    .float_resistor = GPIO_PUPDR_NONE,
-                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
-                                    .alt_func_num = 4,
-                                    .pin_number = scl_pin};
-  GPIOHandle_t dummy_toggles = {.p_GPIO_addr = scl_gpio_port, .cfg = dummy_toggles_cfg};
-  GPIO_init(&dummy_toggles);
-
-  GPIO_set_output(scl_gpio_port, scl_pin, 1);
-
-  for (int i = 0; i < 9; i++) {
-    GPIO_set_output(scl_gpio_port, scl_pin, 0);
-    WAIT(VERY_FAST);
-    GPIO_set_output(scl_gpio_port, scl_pin, 1);
-    WAIT(VERY_FAST);
-  }
-}
-
 void i2c_dma_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
   GPIOConfig_t default_gpio_cfg = {.mode = GPIO_MODE_ALTFN,
-                                   .speed = GPIO_SPEED_HIGH,
+                                   .speed = GPIO_SPEED_MEDIUM,
                                    .float_resistor = GPIO_PUPDR_NONE,
                                    .output_type = GPIO_OP_TYPE_OPENDRAIN,
                                    .alt_func_num = 4};
@@ -279,7 +269,7 @@ void i2c_dma_setup() {
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = 0,
               .channel = I2C_DMA_TX_CHANNEL,
-              .priority = DMA_PRIORITY_MAX,
+              .priority = DMA_PRIORITY_HIGH,
               .circ_buffer = DMA_BUFFER_FINITE,
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =
@@ -302,7 +292,7 @@ void i2c_dma_setup() {
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = 0,
               .channel = I2C_DMA_RX_CHANNEL,
-              .priority = DMA_PRIORITY_HIGH,
+              .priority = DMA_PRIORITY_MAX,
               .circ_buffer = DMA_BUFFER_FINITE,
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =

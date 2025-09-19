@@ -39,8 +39,6 @@ int _write(int le, char *ptr, int len) {
 
 #define SIZEOF(arr) ((unsigned int)sizeof(arr) / sizeof(arr[0]))
 
-#define TEST_SIG(state) GPIO_set_output(GPIOA, 0, state)
-
 #define VERY_FAST 16
 #define FAST 100000
 #define MEDIUM 300000
@@ -52,65 +50,14 @@ int _write(int le, char *ptr, int len) {
 
 void i2c_dma_setup();
 void i2c_timer_setup();
-void setup_test_sig();
-
+void setup_start_sequence_dma(void);
+void setup_main_sequence_dma(void);
 void express_data(void);
-void setup_rx_cb(void);
 
+uint8_t gyro_addr = 0x68;
+uint8_t tx_start_buff[2] = {0x6B, 0x0};
 uint8_t tx_buff[1] = {0x3B};
 uint8_t rx_buff[14] = {0x0};
-
-uint8_t setup_done = 0;
-uint8_t tx_done = 0;
-uint8_t tx_len = 0;
-uint8_t rx_len = 0;
-uint8_t txrx_busy = 0;
-
-void (*timer_callback)(void) = NULL;
-
-void start_interrupt_cb(void) {
-  int breakpoint = 0;
-  i2c_start_interrupt(I2C1);
-}
-
-static inline void send_addr(I2C_TypeDef *i2c_reg, uint8_t addr, uint8_t lsb) { i2c_reg->DR = ((addr << 1) | lsb); }
-
-static inline void init_dma_xmission(I2C_TypeDef *i2c_reg, uint8_t rx) {
-  // If rx, it needs acks sent
-  if (rx && rx_len > 1) i2c_reg->CR1 |= I2C_CR1_ACK;
-
-  // START DMA HERE
-  i2c_reg->CR2 |= I2C_CR2_DMAEN;
-
-  // Clear SR regs
-  (void)i2c_reg->SR1;
-  (void)i2c_reg->SR2;
-
-  if (rx) {
-    i2c_reg->CR2 |= I2C_CR2_LAST;
-    dma_start_transfer(I2C_DMA_RX_STREAM, rx_len);
-  } else {
-    i2c_reg->CR2 &= ~I2C_CR2_LAST;
-    dma_start_transfer(I2C_DMA_TX_STREAM, tx_len);
-  }
-}
-
-static inline void end_send_data(I2C_TypeDef *i2c_reg, uint8_t rx, uint8_t repeated_start) {
-  // After TXE, need to make sure shift register is also cleared
-  i2c_reg->CR2 &= ~(I2C_CR2_DMAEN);
-
-  if (rx) {
-    i2c_reg->CR1 &= ~I2C_CR1_ACK;
-  } else {
-    while (!(i2c_reg->SR1 & I2C_SR1_BTF));
-  }
-
-  if (repeated_start)
-    i2c_reg->CR1 |= I2C_CR1_START;
-  else {
-    i2c_reg->CR1 |= I2C_CR1_STOP;
-  }
-}
 
 typedef struct {
   int16_t accel_x;    // Accelerometer x
@@ -138,7 +85,32 @@ static inline MPU6050Data convert_gyro_data(const uint8_t *buf) {
   return ret;
 }
 
-void setup_rx_cb(void) {}
+void setup_start_sequence_dma(void) {
+  I2CDMAConfig_t dma_config = {.address = gyro_addr,
+                               .tx = {.buff = tx_start_buff, .len = SIZEOF(tx_start_buff)},
+                               .rx = {.buff = NULL, .len = 0},
+                               .tx_stream = I2C_DMA_TX_STREAM,
+                               .rx_stream = I2C_DMA_RX_STREAM,
+                               .dma_set_buffer_cb = dma_set_buffer,
+                               .dma_start_transfer_cb = dma_start_transfer,
+                               .circular = I2C_INTERRUPT_NON_CIRCULAR,
+                               .callback = setup_main_sequence_dma};
+  i2c_setup_interrupt_dma(I2C_PORT, &dma_config);
+}
+
+void setup_main_sequence_dma(void) {
+  I2CDMAConfig_t dma_config = {.address = gyro_addr,
+                               .tx = {.buff = tx_buff, .len = SIZEOF(tx_buff)},
+                               .rx = {.buff = rx_buff, .len = SIZEOF(rx_buff)},
+                               .tx_stream = I2C_DMA_TX_STREAM,
+                               .rx_stream = I2C_DMA_RX_STREAM,
+                               .dma_set_buffer_cb = dma_set_buffer,
+                               .dma_start_transfer_cb = dma_start_transfer,
+                               .circular = I2C_INTERRUPT_NON_CIRCULAR,
+                               .callback = express_data};
+  i2c_setup_interrupt_dma(I2C_PORT, &dma_config);
+  timer_enable(TIM8);
+}
 
 void express_data(void) {
   MPU6050Data mpu_data = convert_gyro_data(rx_buff);
@@ -149,6 +121,7 @@ void express_data(void) {
   printf("Gyro ry: %d\n", mpu_data.gyro_ry);
   printf("Gyro rz: %d\n", mpu_data.gyro_rz);
   printf("MPU temperature: %f\n\n", mpu_data.temperature);
+  timer_enable(TIM8);
 }
 
 int main(void) {
@@ -158,91 +131,38 @@ int main(void) {
 
   i2c_timer_setup();
   i2c_dma_setup();
-  setup_test_sig();
 
   uint8_t gyro_addr = 0x68;
   uint8_t wake_mpu[] = {0x6B, 0x00};
 
   printf("Assigning DMA\n");
-  dma_set_buffer(I2C_DMA_TX_STREAM, &wake_mpu, DMA_ADDRESS_MEMORY_0);
+  setup_start_sequence_dma();
 
   printf("Starting...\n\n");
-  tx_done = 0;
-  tx_len = 2;
-  i2c_start_interrupt(I2C1);
+  i2c_start_interrupt_dma(I2C_PORT);
 
   for (;;) {
     WAIT(MEDIUM);
   }
 }
 
-void I2C1_EV_IRQHandler(void) {
-  I2CIRQType_t irq_reason = i2c_irq_event_handling(I2C1);
-  // TX:
-
-  if (!tx_done) {
-    if (irq_reason == I2C_IRQ_TYPE_STARTED) {
-      send_addr(I2C1, 0x68, 0);
-    } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
-      init_dma_xmission(I2C1, 0);
-    }
-  }
-  // RX:
-  if (tx_done) {
-    if (irq_reason == I2C_IRQ_TYPE_STARTED) {
-      send_addr(I2C1, 0x68, 1);
-    } else if (irq_reason == I2C_IRQ_TYPE_ADDR_SENT) {
-      init_dma_xmission(I2C1, 1);
-    }
-  }
-}
+void I2C1_EV_IRQHandler(void) { i2c_dma_irq_handling_start(I2C_PORT); }
 
 void I2C1_ER_IRQHandler(void) {
   I2CIRQType_t irq_error = i2c_irq_error_handling(I2C1);
   if (irq_error == I2C_IRQ_TYPE_ERROR_ACKFAIL) {
     printf("Error...\n");
-    i2c_start_interrupt(I2C1);
+    i2c_start_interrupt_dma(I2C1);
   }
 }
 
 void TIM8_CC_IRQHandler(void) {
-  if (timer_irq_handling(TIM8, 1)) {
-    if (timer_callback != NULL) timer_callback();
-  }
+  if (timer_irq_handling(TIM8, 1)) i2c_start_interrupt_dma(I2C_PORT);
 }
 
-void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) {
-  if (dma_irq_handling(I2C_DMA_TX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
-    if (!setup_done) {
-      setup_done = 1;
-      end_send_data(I2C_PORT, 0, 0);
+void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) { i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_SEND); }
 
-      // Set main sequence
-      tx_len = SIZEOF(tx_buff);
-      dma_set_buffer(I2C_DMA_TX_STREAM, &tx_buff, DMA_ADDRESS_MEMORY_0);
-      rx_len = SIZEOF(rx_buff);
-      dma_set_buffer(I2C_DMA_RX_STREAM, &rx_buff, DMA_ADDRESS_MEMORY_0);
-
-      // Set timer callback and then start interrupt after the set time
-      timer_callback = start_interrupt_cb;
-      timer_enable(TIM8);
-    } else {
-      end_send_data(I2C_PORT, 0, 1);
-      tx_done = 1;
-      i2c_start_interrupt(I2C_PORT);
-    }
-  }
-}
-
-void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) {
-  if (dma_irq_handling(I2C_DMA_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
-    end_send_data(I2C_PORT, 1, 0);
-    tx_done = 0;
-    express_data();
-    // ENABLE TIMER INTERRUPT (ONE-SHOT)
-    timer_enable(TIM8);
-  }
-}
+void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) { i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_RECEIVE); }
 
 void i2c_dma_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);
@@ -318,15 +238,6 @@ void i2c_dma_setup() {
   i2c_init(&i2c_handle);
   NVIC_EnableIRQ(I2C1_EV_IRQn);
   NVIC_EnableIRQ(I2C1_ER_IRQn);
-}
-
-void setup_test_sig() {
-  GPIO_peri_clock_control(GPIOA, GPIO_CLOCK_ENABLE);
-  GPIOHandle_t sig = {
-      .p_GPIO_addr = GPIOA,
-      .cfg = {.mode = GPIO_MODE_OUT, .pin_number = 0, .speed = GPIO_SPEED_HIGH, .output_type = GPIO_OP_TYPE_PUSHPULL}};
-  GPIO_init(&sig);
-  TEST_SIG(0);
 }
 
 void i2c_timer_setup() {

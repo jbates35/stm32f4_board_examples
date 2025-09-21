@@ -108,7 +108,7 @@ void spi_driver_setup_interrupts() {
   GPIO_init(&spi_gpio_nss_handle);
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
 
-  spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
+  spi_peri_clock_control(SPI_PORT, SPI_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
                             .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_256,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,

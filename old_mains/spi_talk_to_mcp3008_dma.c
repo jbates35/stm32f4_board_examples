@@ -31,11 +31,9 @@
     for (int sleep_cnt = 0; sleep_cnt < CNT; sleep_cnt++); \
   } while (0)
 
-
-void spi_dma_driver_setup_master(uint8_t *in_arr, uint8_t *out_arr, uint16_t elements);
+void spi_dma_driver_setup_master(volatile uint8_t *in_arr, volatile uint8_t *out_arr, uint16_t elements);
 
 int main(void) {
-
   uint8_t mcp3008_dma_tx[3] = {1, (1 << 7) | (1 << 4), 0};
   uint8_t mcp3008_dma_rx[3];
 
@@ -51,7 +49,7 @@ int main(void) {
 
 void DMA2_Stream2_IRQHandler(void) {
   if (dma_irq_handling(DMA_SPI_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE)) {
-    uint8_t *rx_arr = (uint8_t *) (DMA_SPI_RX_STREAM->M0AR);
+    uint8_t *rx_arr = (uint8_t *)(DMA_SPI_RX_STREAM->M0AR);
 
     GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
     uint16_t adc_val = ((rx_arr[1] & 3) << 8) | rx_arr[2];
@@ -59,11 +57,11 @@ void DMA2_Stream2_IRQHandler(void) {
   }
 }
 
-void spi_dma_driver_setup_master(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elements) {
+void spi_dma_driver_setup_master(volatile uint8_t *tx_arr, volatile uint8_t *rx_arr, uint16_t elements) {
   dma_peri_clock_control(DMA2, 1);
   DMAHandle_t spi_dma_tx_handle = {
-      .cfg = {.in = {.addr = (uintptr_t)tx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
-              .out = {.addr = (uintptr_t)&SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+      .cfg = {.in = {.addr = (uint32_t *)tx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+              .out = {.addr = &SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
               .mem_data_size = DMA_DATA_SIZE_8_BIT,
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = elements,
@@ -73,18 +71,18 @@ void spi_dma_driver_setup_master(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elem
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =
                   {
-                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
-                      .transfer_error = DMA_INTERRUPT_DISABLE,
-                      .full_transfer = DMA_INTERRUPT_DISABLE,
-                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                      .direct_mode_error = DMA_DISABLE,
+                      .transfer_error = DMA_DISABLE,
+                      .full_transfer = DMA_DISABLE,
+                      .half_transfer = DMA_DISABLE,
                   },
-              .start_enabled = DMA_START_DISABLED},
-      .p_stream_addr = DMA_SPI_TX_STREAM};
+              .start_enabled = DMA_DISABLE},
+      .stream_addr = DMA_SPI_TX_STREAM};
   dma_stream_init(&spi_dma_tx_handle);
 
   DMAHandle_t spi_dma_rx_handle = {
-      .cfg = {.in = {.addr = (uintptr_t)&SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
-              .out = {.addr = (uintptr_t)rx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
+      .cfg = {.in = {.addr = &SPI_PORT->DR, .type = DMA_IO_TYPE_PERIPHERAL, .inc = DMA_IO_ARR_STATIC},
+              .out = {.addr = (uint32_t *)rx_arr, .type = DMA_IO_TYPE_MEMORY, .inc = DMA_IO_ARR_INCREMENT},
               .mem_data_size = DMA_DATA_SIZE_8_BIT,
               .peri_data_size = DMA_DATA_SIZE_8_BIT,
               .dma_elements = elements,
@@ -94,13 +92,13 @@ void spi_dma_driver_setup_master(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elem
               .flow_control = DMA_PERIPH_NO_FLOW_CONTROL,
               .interrupt_en =
                   {
-                      .direct_mode_error = DMA_INTERRUPT_DISABLE,
-                      .transfer_error = DMA_INTERRUPT_DISABLE,
-                      .full_transfer = DMA_INTERRUPT_ENABLE,
-                      .half_transfer = DMA_INTERRUPT_DISABLE,
+                      .direct_mode_error = DMA_DISABLE,
+                      .transfer_error = DMA_DISABLE,
+                      .full_transfer = DMA_ENABLE,
+                      .half_transfer = DMA_DISABLE,
                   },
-              .start_enabled = DMA_START_DISABLED},
-      .p_stream_addr = DMA_SPI_RX_STREAM};
+              .start_enabled = DMA_DISABLE},
+      .stream_addr = DMA_SPI_RX_STREAM};
   dma_stream_init(&spi_dma_rx_handle);
   dma_peri_clock_control(DMA2, 1);
   NVIC_EnableIRQ(DMA2_Stream2_IRQn);
@@ -131,15 +129,13 @@ void spi_dma_driver_setup_master(uint8_t *tx_arr, uint8_t *rx_arr, uint16_t elem
   GPIO_init(&spi_gpio_nss_handle);
   GPIO_set_output(SPI_GPIO_NSS_PORT, SPI_GPIO_NSS_PIN, 1);
 
-  spi_peri_clock_control(SPI_PORT, SPI_PERI_CLOCK_ENABLE);
+  spi_peri_clock_control(SPI_PORT, SPI_ENABLE);
   SPIHandle_t spi_handle = {.addr = SPI_PORT,
                             .cfg = {.baud_divisor = SPI_BAUD_DIVISOR_32,
                                     .bus_config = SPI_BUS_CONFIG_FULL_DUPLEX,
                                     .device_mode = SPI_DEVICE_MODE_MASTER,
                                     .dff = SPI_DFF_8_BIT,
                                     .ssm = SPI_SSM_ENABLE,
-                                    .dma_setup = {.rx = SPI_DMA_ENABLE, .tx = SPI_DMA_ENABLE},
-                                    .interrupt_setup.en = SPI_INTERRUPT_DISABLE}};
+                                    .dma_setup = {.rx = SPI_ENABLE, .tx = SPI_ENABLE}}};
   spi_init(&spi_handle);
 }
-

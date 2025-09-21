@@ -157,12 +157,21 @@ void I2C1_ER_IRQHandler(void) {
 }
 
 void TIM8_CC_IRQHandler(void) {
-  if (timer_irq_handling(TIM8, 1)) i2c_start_interrupt_dma(I2C_PORT);
+  int ajfoweijafowjoiawf = 0;
+  if (timer_irq_handling(TIM8, 1)) {
+    i2c_start_interrupt_dma(I2C_PORT);
+  }
 }
 
-void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) { i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_SEND); }
+void I2C_DMA_TX_STREAM_IRQ_HANDLER(void) {
+  if (dma_irq_handling(I2C_DMA_TX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE))
+    i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_SEND);
+}
 
-void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) { i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_RECEIVE); }
+void I2C_DMA_RX_STREAM_IRQ_HANDLER(void) {
+  if (dma_irq_handling(I2C_DMA_RX_STREAM, DMA_INTERRUPT_TYPE_FULL_TRANSFER_COMPLETE))
+    i2c_dma_irq_handling_end(I2C_PORT, I2C_TXRX_DIR_RECEIVE);
+}
 
 void i2c_dma_setup() {
   GPIO_peri_clock_control(I2C_GPIO_PORT, GPIO_CLOCK_ENABLE);

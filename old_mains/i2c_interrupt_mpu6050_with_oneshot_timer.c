@@ -63,13 +63,13 @@ static MPU6050Data convert_gyro_data(const uint8_t *buf) {
 void i2c_int_setup();
 void i2c_timer_setup();
 
-void rx_cb(void);
+void main_rx_cb(void);
 void setup_rx_cb(void);
 
 uint8_t tx_byte = 0x3B;
 uint8_t rx_buff[14] = {0x0};
 
-void rx_cb(void) {
+void main_rx_cb(void) {
   MPU6050Data mpu_data = convert_gyro_data(rx_buff);
   printf("Accel x: %d\n", mpu_data.accel_x);
   printf("Accel y: %d\n", mpu_data.accel_y);
@@ -90,7 +90,7 @@ void setup_rx_cb(void) {
 
   I2CInterruptConfig_t normal_int_setup = {.tx = {.len = 1, .buff = &tx_byte},
                                            .rx = {.len = SIZEOF(rx_buff), .buff = rx_buff},
-                                           .callback = rx_cb,
+                                           .callback = main_rx_cb,
                                            .address = gyro_addr,
                                            .circular = I2C_INTERRUPT_NON_CIRCULAR};
 
